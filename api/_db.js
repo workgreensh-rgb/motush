@@ -43,6 +43,9 @@ export async function init() {
     v JSONB NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT now()
   )`;
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar TEXT DEFAULT '🐥'`;
+  await sql`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS trade_count INTEGER DEFAULT 0`;
+  await sql`ALTER TABLE feed ADD COLUMN IF NOT EXISTS avatar TEXT DEFAULT '🐥'`;
   ready = true;
 }
 
@@ -51,7 +54,7 @@ export async function authUser(req) {
   const token = h.replace("Bearer", "").trim();
   if (!token) return null;
   const rows = await sql`
-    SELECT u.id, u.username, u.name
+    SELECT u.id, u.username, u.name, u.avatar
     FROM sessions s JOIN users u ON u.id = s.user_id
     WHERE s.token = ${token}`;
   return rows[0] || null;

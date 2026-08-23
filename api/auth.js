@@ -1,4 +1,4 @@
-import { init, sql } from "./_db.js";
+import { init, sql, authUser } from "./_db.js";
 import { START_CASH } from "./_kis.js";
 import { scryptSync, randomBytes, timingSafeEqual } from "crypto";
 
@@ -7,7 +7,10 @@ export default async function handler(req, res) {
     if (req.method !== "POST") return res.status(405).json({ error: "허용되지 않는 요청입니다" });
     await init();
 
-    const { action, username, password, name } = req.body || {};
+    const AVATARS = ["🐶","🐱","🐰","🦊","🐻","🐼","🐯","🦁","🐸","🐥","🐧","🐹"];
+    const { action, username, password, name, avatar } = req.body || {};
+
+
     const u = String(username || "").trim().toLowerCase();
 
     if (!/^[a-z0-9_]{2,20}$/.test(u))

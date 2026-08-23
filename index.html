@@ -79,6 +79,10 @@ border-radius:99px;padding:8px 14px;font-size:11.5px;color:var(--dim);z-index:8;
 .visitors b{color:var(--tx)}
 .visitors .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:#3ddc84;margin-right:5px;animation:blink 2s infinite}
 @keyframes blink{50%{opacity:.3}}
+.avgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:6px}
+.avgrid button{font-size:22px;padding:8px 0;background:var(--panel2);border:2px solid var(--line);border-radius:10px;cursor:pointer}
+.avgrid button.on{border-color:var(--gold);background:#242c40}
+.av{font-size:15px;margin-right:2px}
 #tvWrap{margin-top:12px;border:1px solid var(--line);border-radius:8px;overflow:hidden;height:420px}
 #tvWrap iframe{width:100%;height:100%;border:0}
 </style>
@@ -89,7 +93,7 @@ border-radius:99px;padding:8px 14px;font-size:11.5px;color:var(--dim);z-index:8;
   <div class="wrap">
     <div class="hdrow">
       <div class="logo">모투장 <em>·</em>
-        <span id="hdUser" class="hidden"><span id="hdName" style="font-size:13px;color:var(--dim);font-weight:600"></span>
+        <span id="hdUser" class="hidden"><span class="av" id="hdAv"></span><span id="hdName" style="font-size:13px;color:var(--dim);font-weight:600"></span>
         <button class="btn x" onclick="logout()">로그아웃</button></span>
         <button id="hdLogin" class="btn g" style="padding:6px 12px;font-size:12px" onclick="openLogin()">로그인</button>
       </div>
@@ -100,6 +104,7 @@ border-radius:99px;padding:8px 14px;font-size:11.5px;color:var(--dim);z-index:8;
       <button class="tab" data-tab="market" onclick="setTab('market')">시장</button>
       <button class="tab" data-tab="port" onclick="setTab('port')">내 계좌</button>
       <button class="tab" data-tab="rank" onclick="setTab('rank')">랭킹</button>
+      <button class="tab" style="max-width:44px;font-size:15px" onclick="openSearch()">🔍</button>
     </div>
   </div>
 </div>
@@ -137,6 +142,15 @@ border-radius:99px;padding:8px 14px;font-size:11.5px;color:var(--dim);z-index:8;
 
 <div class="visitors num"><span class="dot"></span>동시접속 <b id="vAll">-</b> · 선수 <b id="vPl">-</b> · Total <b id="vTot">-</b></div>
 
+<!-- 검색 오버레이 -->
+<div class="ov" id="searchOv" onclick="if(event.target===this)this.classList.remove('show')">
+  <div class="dlg" style="max-width:420px">
+    <div class="nm" style="font-size:15px">종목 · 코인 검색</div>
+    <input class="in" id="searchIn" placeholder="이름 또는 코드 입력 (예: 삼성, BTC)" oninput="renderSearch()" autocomplete="off">
+    <div id="searchRes" style="max-height:320px;overflow-y:auto;margin-top:10px"></div>
+  </div>
+</div>
+
 <!-- 로그인/회원가입 모달 -->
 <div class="ov" id="loginOv" onclick="if(event.target===this)this.classList.remove('show')">
   <div class="dlg">
@@ -144,6 +158,7 @@ border-radius:99px;padding:8px 14px;font-size:11.5px;color:var(--dim);z-index:8;
     <div style="color:var(--dim);font-size:14px;margin-top:4px;font-weight:700">친구들과 겨루는 모의투자</div>
     <div id="signupFields" class="hidden">
       <input class="in" id="suName" placeholder="닉네임 (랭킹에 표시)" maxlength="20" style="margin-top:16px">
+      <div class="sub" style="margin-top:10px;line-height:1.6">모든 선수는 🐣 아기새로 시작합니다.<br>거래와 수익률로 🐥 청춘새 → 🦅 독수리로 성장시키세요!</div>
     </div>
     <input class="in" id="lgId" placeholder="아이디 (영문·숫자)" maxlength="20" autocapitalize="none" style="margin-top:10px">
     <input class="in" id="lgPw" type="password" placeholder="비밀번호" maxlength="50">
@@ -199,6 +214,93 @@ var CALENDAR = [
   {d:"8/28 목", t:"미국 2분기 GDP 잠정치", imp:false, s:""},
   {d:"8/29 금", t:"미국 7월 PCE 물가", imp:true, s:"Fed 선호 지표"}
 ];
+
+/* ───────── 검색 ───────── */
+function openSearch(){
+  document.getElementById("searchOv").classList.add("show");
+  document.getElementById("searchIn").value="";
+  renderSearch();
+  setTimeout(function(){document.getElementById("searchIn").focus();},50);
+}
+var srchTimer=null, srchServer=[];
+function renderSearch(){
+  var q=document.getElementById("searchIn").value.trim();
+  var ql=q.toLowerCase();
+  // 서버 전 종목 검색 (0.25초 디바운스)
+  clearTimeout(srchTimer);
+  if(q.length>=1){
+    srchTimer=setTimeout(async function(){
+      try{
+        var d=await api("/api/symbols?q="+encodeURIComponent(q));
+        srchServer=(d&&d.results)||[];
+      }catch(e){srchServer=[];}
+      drawSearch(q,ql);
+    },250);
+  }else srchServer=[];
+  drawSearch(q,ql);
+}
+function drawSearch(q,ql){
+  var el=document.getElementById("searchRes");
+  var h="";
+  var shown={};
+  // 내 목록 (즉시)
+  QUOTES.list.filter(function(x){return !ql||x.name.toLowerCase().indexOf(ql)>=0||x.sym.toLowerCase().indexOf(ql)>=0;})
+    .slice(0,6).forEach(function(x){
+      shown[x.sym]=1;
+      h+='<div class="row click" onclick="closeSearch();openChart(\''+x.sym+'\')"><div class="grow"><div class="nm">'+x.name+'</div><div class="sub">'+(x.market==="KR"?"국내":"미국")+' · '+x.sym+'</div></div>'+(x.price?'<div class="pr num"><b>'+fmt(x.price)+'</b></div>':'')
+        +'<button class="btn g" style="padding:6px 10px;font-size:11px" onclick="event.stopPropagation();closeSearch();openModalFor(\''+x.sym+'\')">거래</button></div>';
+    });
+  // 코인
+  COINS.filter(function(c){return !ql||c.name.toLowerCase().indexOf(ql)>=0||c.sym.toLowerCase().indexOf(ql)>=0;})
+    .slice(0,4).forEach(function(c){
+      h+='<div class="row click" onclick="closeSearch();openCoinChart(\''+c.sym+'\')"><div class="grow"><div class="nm">'+c.name+'</div><div class="sub">코인 · '+c.sym+'</div></div><div class="pr num"><b>'+fmt(c.price)+'</b></div></div>';
+    });
+  // 전 종목 (서버)
+  srchServer.forEach(function(r){
+    if(shown[r.code])return;
+    h+='<div class="row click" onclick="closeSearch();openKrChart(\''+r.code+'\',\''+esc(r.name).replace(/'/g,"")+'\')"><div class="grow"><div class="nm">'+esc(r.name)+'</div><div class="sub">'+r.mkt+' · '+r.code+'</div></div>'
+      +'<button class="btn g" style="padding:6px 10px;font-size:11px" onclick="event.stopPropagation();closeSearch();openModalFor(\''+r.code+'\')">거래</button></div>';
+  });
+  // 미국 티커 직접
+  if(/^[A-Za-z.]{1,6}$/.test(q)){
+    var t=q.toUpperCase();
+    h+='<div class="row click" onclick="closeSearch();openKrChart(\''+t+'\',\''+t+'\')"><div class="grow"><div class="nm">🇺🇸 미국 티커 \''+t+'\'</div><div class="sub">차트 보기 · 거래 가능</div></div>'
+      +'<button class="btn g" style="padding:6px 10px;font-size:11px" onclick="event.stopPropagation();closeSearch();openModalFor(\''+t+'\')">거래</button></div>';
+  }
+  h+='<div class="row click" onclick="closeSearch();openFreeChart()"><div class="grow"><div class="nm" style="color:var(--gold)">🔍 차트에서 직접 검색</div><div class="sub">전 세계 모든 종목·코인 (트레이딩뷰)</div></div></div>';
+  el.innerHTML=h||'<div class="row"><span class="sub">검색 결과가 없습니다</span></div>';
+}
+function openKrChart(code,name){
+  var tvs=/^\d{6}$/.test(code)?("KRX:"+code):("NASDAQ:"+code);
+  openTV(name,"",tvs,code,false);
+}
+async function openModalFor(code){
+  if(!me){needLogin();return;}
+  var q=qmap(code);
+  if(q&&q.price){openModal(code,"buy");return;}
+  flash("시세 불러오는 중…");
+  try{
+    var d=await api("/api/quotes?watch="+encodeURIComponent(code));
+    if(d&&d.list){QUOTES=d;renderAll();}
+    var q2=qmap(code);
+    if(q2&&q2.price)openModal(code,"buy");
+    else flash("시세를 찾지 못했습니다. 코드를 확인해 주세요");
+  }catch(e){flash(e.message);}
+}
+function closeSearch(){document.getElementById("searchOv").classList.remove("show");}
+function openCoinChart(sym){
+  var c=null;COINS.forEach(function(x){if(x.sym===sym)c=x;});
+  if(!c)return;
+  var tvs=(sym==="USDT"||sym==="USDC")?("CRYPTO:"+sym+"USD"):("BINANCE:"+sym+"USDT");
+  openTV(c.name,fmt(c.price)+"원 ("+pct(c.chg)+")",tvs,null,false);
+}
+function openFreeChart(){
+  var q=document.getElementById("searchIn").value.trim();
+  var tvs="KRX:005930";
+  if(/^[0-9]{6}$/.test(q))tvs="KRX:"+q;
+  else if(/^[A-Za-z.]{1,6}$/.test(q))tvs=q.toUpperCase();
+  openTV(q||"차트 검색","차트 좌상단 종목명을 눌러 검색하세요",tvs,null,true);
+}
 
 /* ───────── 상태 ───────── */
 var me=null, curTab="home", modal=null, signupMode=false, busy=false;
@@ -288,7 +390,7 @@ function logout(){
 async function enterApp(){
   var acc=await api("/api/account");
   me=acc;
-  document.getElementById("hdName").textContent=me.name;
+  document.getElementById("hdName").textContent=me.name;document.getElementById("hdAv").textContent=me.avatar||"🐥";
   document.getElementById("hdUser").classList.remove("hidden");
   document.getElementById("hdEq").classList.remove("hidden");
   document.getElementById("hdLogin").classList.add("hidden");
@@ -344,7 +446,7 @@ function renderFeed(){
   var h="";
   FEED.forEach(function(f){
     var v=f.side==="buy"?'<span class="up">매수</span>':'<span class="dn">매도</span>';
-    h+='<div class="feeditem"><span class="who">'+esc(f.name)+'</span>님이 <b>'+esc(f.stock)+'</b> '+f.qty+'주를 '+fmt(f.price)+'원에 '+v+'했습니다<span class="tm">'+ago(f.ts)+'</span></div>';
+    h+='<div class="feeditem"><span class="av">'+(f.avatar||"🐥")+'</span><span class="who">'+esc(f.name)+'</span>님이 <b>'+esc(f.stock)+'</b> '+f.qty+'주를 '+fmt(f.price)+'원에 '+v+'했습니다<span class="tm">'+ago(f.ts)+'</span></div>';
   });
   el.innerHTML=h;
 }
@@ -363,7 +465,7 @@ function renderCoins(){
   var h="";
   COINS.forEach(function(c,i){
     var up=c.chg>=0;
-    h+='<div class="row"><span class="rk num">'+(i+1)+'</span><div class="icon">'+esc(c.sym)+'</div>'
+    h+='<div class="row click" onclick="openCoinChart(\''+c.sym+'\')"><span class="rk num">'+(i+1)+'</span><div class="icon">'+esc(c.sym)+'</div>'
       +'<div class="grow"><div class="nm">'+esc(c.name)+'</div></div>'
       +'<div class="pr num"><b>'+fmt(c.price)+'</b><div class="sub"><span class="'+(up?"up":"dn")+'">'+pct(c.chg)+'</span></div></div></div>';
   });
@@ -397,12 +499,22 @@ function renderMarket(){
   document.getElementById("marketTab").innerHTML=h;
 }
 
+function growthText(){
+  var ret=(equityLocal()-START_CASH)/START_CASH*100;
+  var tc=me.trade_count||0;
+  var lv=me.stage?me.stage.lv:1;
+  if(lv>=3)return "🦅 최고 단계 달성! 왕좌를 지키세요. (수익률 경로는 성적이 꺾이면 강등될 수 있습니다)";
+  var needT=lv===1?10:30, needR=lv===1?5:15, nextAv=lv===1?"🐥":"🦅";
+  return "다음 진화("+nextAv+")까지 — 거래 "+tc+"/"+needT+"회 또는 수익률 "+pct(ret)+" / +"+needR+"%";
+}
 /* 내 계좌 */
 function renderPort(){
   if(!me){document.getElementById("portTab").innerHTML="";return;}
   var eq=equityLocal();
   var ret=(eq-START_CASH)/START_CASH*100;
   var h='<div class="card mt12">'
+    +'<div class="row"><div class="grow"><span style="font-size:26px;margin-right:8px">'+(me.avatar||"🐣")+'</span><b>'+esc(me.name)+'</b><span class="sub" style="margin-left:6px">Lv.'+(me.stage?me.stage.lv:1)+' '+(me.stage?me.stage.name:"아기새")+'</span></div></div>'
+    +'<div class="row"><div class="grow sub" style="line-height:1.6">'+growthText()+'</div></div>'
     +'<div class="row"><div class="grow sub">예수금</div><b class="num">'+fmt(me.cash)+'원</b></div>'
     +'<div class="row"><div class="grow sub">평가금액</div><b class="num">'+fmt(eq-me.cash)+'원</b></div>'
     +'<div class="row"><div class="grow sub">총 수익률</div><b class="num '+(ret>=0?"up":"dn")+'">'+pct(ret)+'</b></div></div>';
@@ -445,7 +557,7 @@ function renderRank(){
   else if(lastBoard.length===0)h+='<div class="row"><span class="sub">아직 참가자가 없습니다.</span></div>';
   else lastBoard.forEach(function(r,i){
     h+='<div class="row"><div class="rk num'+(i<3?" top":"")+'">'+(i+1)+'</div>'
-      +'<div class="grow nm">'+esc(r.name)+(me&&r.username===me.username?'<span class="sub"> (나)</span>':'')+'</div>'
+      +'<div class="grow nm"><span class="av">'+(r.avatar||"🐥")+'</span>'+esc(r.name)+(me&&r.username===me.username?'<span class="sub"> (나)</span>':'')+'</div>'
       +'<div class="pr num"><b>'+fmt(r.equity)+'원</b><div class="sub"><span class="'+(r.ret>=0?"up":"dn")+'">'+pct(r.ret)+'</span></div></div></div>';
   });
   h+='<div class="row"><span class="sub">참가자 전원의 계좌를 서버에서 실시간 집계한 순위입니다.</span></div></div>';
@@ -460,22 +572,22 @@ function renderAll(){
 }
 
 /* ───────── 차트 (TradingView) ───────── */
-var chartSym=null;
-function tvSymbol(q){
-  if(q.market==="KR")return "KRX:"+q.sym;
-  return "NASDAQ:"+q.sym;
+function openTV(title,priceText,tvsym,tradeSym,allowChange){
+  document.getElementById("cName").textContent=title;
+  document.getElementById("cPrice").textContent=priceText||"";
+  var tb=document.getElementById("cTradeBtn");
+  if(tradeSym){tb.style.display="";tb.onclick=function(){closeChart();openModalFor(tradeSym);};}
+  else tb.style.display="none";
+  var url="https://s.tradingview.com/widgetembed/?symbol="+encodeURIComponent(tvsym)
+    +"&interval=D&theme=dark&style=1&locale=kr&hide_top_toolbar=0&hide_side_toolbar=0&withdateranges=1&allow_symbol_change="+(allowChange?"1":"0");
+  document.getElementById("tvWrap").innerHTML='<iframe src="'+url+'" allowfullscreen></iframe>';
+  document.getElementById("chartOv").classList.add("show");
 }
 function openChart(sym){
   var q=qmap(sym);
   if(!q){flash("시세 수신 중입니다");return;}
-  chartSym=sym;
-  document.getElementById("cName").textContent=q.name;
-  document.getElementById("cPrice").textContent=q.price?fmt(q.price)+"원 ("+pct(q.chg||0)+")":"";
-  document.getElementById("cTradeBtn").onclick=function(){closeChart();openModal(sym,"buy");};
-  var url="https://s.tradingview.com/widgetembed/?symbol="+encodeURIComponent(tvSymbol(q))
-    +"&interval=D&theme=dark&style=1&locale=kr&hide_top_toolbar=0&hide_side_toolbar=0&withdateranges=1&allow_symbol_change=0";
-  document.getElementById("tvWrap").innerHTML='<iframe src="'+url+'" allowfullscreen></iframe>';
-  document.getElementById("chartOv").classList.add("show");
+  var tvs=q.market==="KR"?("KRX:"+q.sym):("NASDAQ:"+q.sym);
+  openTV(q.name,q.price?fmt(q.price)+"원 ("+pct(q.chg||0)+")":"",tvs,sym,false);
 }
 function closeChart(){
   document.getElementById("chartOv").classList.remove("show");
@@ -528,7 +640,7 @@ async function trade(){
   busy=true;document.getElementById("mSubmit").disabled=true;
   try{
     var r=await api("/api/trade",{method:"POST",body:{code:modal.code,side:modal.side,qty:n}});
-    me.cash=r.cash;me.holdings=r.holdings;me.trades=r.trades;
+    me.cash=r.cash;me.holdings=r.holdings;me.trades=r.trades;if(r.stage){var lvUp=me.stage&&r.stage.lv>me.stage.lv;me.stage=r.stage;me.avatar=r.stage.av;me.trade_count=r.trade_count;document.getElementById("hdAv").textContent=me.avatar;if(lvUp)setTimeout(function(){flash("🎉 진화! "+r.stage.av+" "+r.stage.name+"(으)로 성장했습니다!");},1500);}
     var f=r.filled;
     closeModal();renderAll();loadFeed();
     flash(f.name+" "+f.n+"주 "+(f.side==="buy"?"매수":"매도")+" 체결 · "+fmt(f.price)+"원");

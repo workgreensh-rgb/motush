@@ -1,5 +1,5 @@
 import { init, sql, authUser } from "./_db.js";
-import { getQuotes, equityOf, SYMBOLS, FEE_RATE } from "./_kis.js";
+import { getQuotes, watchSymbol, resolveMeta, equityOf, stageOf, FEE_RATE, START_CASH } from "./_kis.js";
 
 export default async function handler(req, res) {
   try {
@@ -10,7 +10,7 @@ export default async function handler(req, res) {
     if (!user) return res.status(401).json({ error: "로그인이 필요합니다" });
 
     const { code, side, qty } = req.body || {};
-    const meta = SYMBOLS.find((x) => x.sym === code);
+    const meta = await resolveMeta(code);
     const n = Math.floor(Number(qty));
     if (!meta) return res.status(400).json({ error: "존재하지 않는 종목입니다" });
     if (side !== "buy" && side !== "sell") return res.status(400).json({ error: "잘못된 주문 유형입니다" });
@@ -18,20 +18,22 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "수량을 확인해 주세요" });
 
     let cache = await getQuotes(false);
-    let item = cache.items[code];
-    if (!item || !item.price) {
-      cache = await getQuotes(true);
-      item = cache.items[code];
+    let item = cache.items[meta.sym];
+    if (!item || !item.price || Date.now() - (item.ts || 0) > 120 * 1000) {
+      const w = await watchSymbol(meta.sym);
+      cache = w.cache;
+      item = cache.items[meta.sym];
     }
     if (!item || !item.price)
-      return res.status(503).json({ error: "시세 준비 중입니다. 잠시 후 다시 시도해 주세요" });
+      return res.status(503).json({ error: "시세를 찾지 못했습니다. 종목코드를 확인하거나 잠시 후 다시 시도해 주세요" });
 
-    const rows = await sql`SELECT cash, holdings, trades FROM accounts WHERE user_id = ${user.id}`;
+    const rows = await sql`SELECT cash, holdings, trades, trade_count FROM accounts WHERE user_id = ${user.id}`;
     if (!rows.length) return res.status(404).json({ error: "계좌를 찾을 수 없습니다" });
 
     let cash = Number(rows[0].cash);
     const holdings = rows[0].holdings || {};
     let trades = rows[0].trades || [];
+    const tradeCount = Number(rows[0].trade_count || 0) + 1;
 
     const price = item.price; // 서버 캐시 시세로 체결 (조작 방지)
     const gross = price * n;
@@ -40,24 +42,29 @@ export default async function handler(req, res) {
     if (side === "buy") {
       if (gross + fee > cash) return res.status(400).json({ error: "현금이 부족합니다" });
       cash -= gross + fee;
-      const h = holdings[code] || { qty: 0, cost: 0 };
-      holdings[code] = { qty: h.qty + n, cost: h.cost + gross };
+      const h = holdings[meta.sym] || { qty: 0, cost: 0 };
+      holdings[meta.sym] = { qty: h.qty + n, cost: h.cost + gross };
     } else {
-      const h = holdings[code];
+      const h = holdings[meta.sym];
       if (!h || h.qty < n) return res.status(400).json({ error: "보유 수량이 부족합니다" });
       cash += gross - fee;
       const rest = h.qty - n;
-      if (rest === 0) delete holdings[code];
-      else holdings[code] = { qty: rest, cost: Math.round(h.cost * (rest / h.qty)) };
+      if (rest === 0) delete holdings[meta.sym];
+      else holdings[meta.sym] = { qty: rest, cost: Math.round(h.cost * (rest / h.qty)) };
     }
 
     trades = [
-      { ts: Date.now(), code, name: meta.name, side, n, price },
+      { ts: Date.now(), code: meta.sym, name: item.name || meta.name, side, n, price },
       ...trades
     ].slice(0, 30);
 
+    const equity = equityOf(cash, holdings, cache);
+    const ret = ((equity - START_CASH) / START_CASH) * 100;
+    const st = stageOf(ret, tradeCount);
+
     try {
-      await sql`INSERT INTO feed (name, stock, side, qty, price) VALUES (${user.name}, ${meta.name}, ${side}, ${n}, ${price})`;
+      await sql`INSERT INTO feed (name, avatar, stock, side, qty, price)
+        VALUES (${user.name}, ${st.av}, ${item.name || meta.name}, ${side}, ${n}, ${price})`;
     } catch (e) {}
 
     await sql`
@@ -65,16 +72,18 @@ export default async function handler(req, res) {
       SET cash = ${Math.round(cash)},
           holdings = ${JSON.stringify(holdings)}::jsonb,
           trades = ${JSON.stringify(trades)}::jsonb,
+          trade_count = ${tradeCount},
           updated_at = now()
       WHERE user_id = ${user.id}`;
 
     return res.status(200).json({
       ok: true,
-      filled: { code, name: meta.name, side, n, price },
+      filled: { code: meta.sym, name: item.name || meta.name, side, n, price },
       cash: Math.round(cash),
-      holdings,
-      trades,
-      equity: equityOf(cash, holdings, cache)
+      holdings, trades,
+      trade_count: tradeCount,
+      equity,
+      stage: st
     });
   } catch (e) {
     return res.status(500).json({ error: "서버 오류가 발생했습니다", detail: String(e.message || e) });

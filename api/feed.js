@@ -6,11 +6,11 @@ export default async function handler(req, res) {
     if (req.method !== "GET") return res.status(405).json({ error: "허용되지 않는 요청입니다" });
     await init();
     const rows = await sql`
-      SELECT name, stock, side, qty, price, ts FROM feed
+      SELECT name, avatar, stock, side, qty, price, ts FROM feed
       ORDER BY id DESC LIMIT 20`;
     return res.status(200).json({
       feed: rows.map((r) => ({
-        name: r.name, stock: r.stock, side: r.side,
+        name: r.name, avatar: r.avatar || "🐥", stock: r.stock, side: r.side,
         qty: Number(r.qty), price: Number(r.price),
         ts: new Date(r.ts).getTime()
       }))
