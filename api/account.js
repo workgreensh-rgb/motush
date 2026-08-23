@@ -1,5 +1,5 @@
 import { init, sql, authUser } from "./_db.js";
-import { equityOf } from "./_engine.js";
+import { getQuotes, equityOf } from "./_kis.js";
 
 export default async function handler(req, res) {
   try {
@@ -13,13 +13,14 @@ export default async function handler(req, res) {
     if (!rows.length) return res.status(404).json({ error: "계좌를 찾을 수 없습니다" });
 
     const acc = rows[0];
+    const cache = await getQuotes(false);
     return res.status(200).json({
       username: user.username,
       name: user.name,
       cash: Number(acc.cash),
       holdings: acc.holdings || {},
       trades: acc.trades || [],
-      equity: equityOf(acc.cash, acc.holdings)
+      equity: equityOf(acc.cash, acc.holdings, cache)
     });
   } catch (e) {
     return res.status(500).json({ error: "서버 오류가 발생했습니다", detail: String(e.message || e) });

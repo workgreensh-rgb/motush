@@ -1,5 +1,5 @@
 import { init, sql, authUser } from "./_db.js";
-import { TICKERS, currentPrice, equityOf, FEE_RATE } from "./_engine.js";
+import { getQuotes, equityOf, SYMBOLS, FEE_RATE } from "./_kis.js";
 
 export default async function handler(req, res) {
   try {
@@ -10,12 +10,21 @@ export default async function handler(req, res) {
     if (!user) return res.status(401).json({ error: "로그인이 필요합니다" });
 
     const { code, side, qty } = req.body || {};
-    const tk = TICKERS.find((x) => x.code === code);
+    const meta = SYMBOLS.find((x) => x.sym === code);
     const n = Math.floor(Number(qty));
-    if (!tk) return res.status(400).json({ error: "존재하지 않는 종목입니다" });
+    if (!meta) return res.status(400).json({ error: "존재하지 않는 종목입니다" });
     if (side !== "buy" && side !== "sell") return res.status(400).json({ error: "잘못된 주문 유형입니다" });
     if (!Number.isFinite(n) || n <= 0 || n > 100000000)
       return res.status(400).json({ error: "수량을 확인해 주세요" });
+
+    let cache = await getQuotes(false);
+    let item = cache.items[code];
+    if (!item || !item.price) {
+      cache = await getQuotes(true);
+      item = cache.items[code];
+    }
+    if (!item || !item.price)
+      return res.status(503).json({ error: "시세 준비 중입니다. 잠시 후 다시 시도해 주세요" });
 
     const rows = await sql`SELECT cash, holdings, trades FROM accounts WHERE user_id = ${user.id}`;
     if (!rows.length) return res.status(404).json({ error: "계좌를 찾을 수 없습니다" });
@@ -24,7 +33,7 @@ export default async function handler(req, res) {
     const holdings = rows[0].holdings || {};
     let trades = rows[0].trades || [];
 
-    const price = currentPrice(code); // 서버가 시세 결정 (조작 방지)
+    const price = item.price; // 서버 캐시 시세로 체결 (조작 방지)
     const gross = price * n;
     const fee = Math.round(gross * FEE_RATE);
 
@@ -43,7 +52,7 @@ export default async function handler(req, res) {
     }
 
     trades = [
-      { ts: Date.now(), code, name: tk.name, side, n, price },
+      { ts: Date.now(), code, name: meta.name, side, n, price },
       ...trades
     ].slice(0, 30);
 
@@ -57,11 +66,11 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       ok: true,
-      filled: { code, name: tk.name, side, n, price },
+      filled: { code, name: meta.name, side, n, price },
       cash: Math.round(cash),
       holdings,
       trades,
-      equity: equityOf(cash, holdings)
+      equity: equityOf(cash, holdings, cache)
     });
   } catch (e) {
     return res.status(500).json({ error: "서버 오류가 발생했습니다", detail: String(e.message || e) });
