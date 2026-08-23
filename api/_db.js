@@ -29,6 +29,15 @@ export async function init() {
     user_id INTEGER REFERENCES users(id),
     created_at TIMESTAMPTZ DEFAULT now()
   )`;
+  await sql`CREATE TABLE IF NOT EXISTS feed (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    stock TEXT NOT NULL,
+    side TEXT NOT NULL,
+    qty INTEGER NOT NULL,
+    price BIGINT NOT NULL,
+    ts TIMESTAMPTZ DEFAULT now()
+  )`;
   await sql`CREATE TABLE IF NOT EXISTS kv (
     k TEXT PRIMARY KEY,
     v JSONB NOT NULL,

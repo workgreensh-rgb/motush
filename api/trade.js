@@ -56,6 +56,10 @@ export default async function handler(req, res) {
       ...trades
     ].slice(0, 30);
 
+    try {
+      await sql`INSERT INTO feed (name, stock, side, qty, price) VALUES (${user.name}, ${meta.name}, ${side}, ${n}, ${price})`;
+    } catch (e) {}
+
     await sql`
       UPDATE accounts
       SET cash = ${Math.round(cash)},

@@ -12,7 +12,11 @@ export const SYMBOLS = [
   // 국내 (실시간)
   { sym: "005930", name: "삼성전자", market: "KR", sector: "전기전자" },
   { sym: "000660", name: "SK하이닉스", market: "KR", sector: "반도체" },
+  { sym: "373220", name: "LG에너지솔루션", market: "KR", sector: "2차전지" },
+  { sym: "207940", name: "삼성바이오로직스", market: "KR", sector: "바이오" },
   { sym: "005380", name: "현대차", market: "KR", sector: "자동차" },
+  { sym: "000270", name: "기아", market: "KR", sector: "자동차" },
+  { sym: "068270", name: "셀트리온", market: "KR", sector: "바이오" },
   { sym: "000720", name: "현대건설", market: "KR", sector: "건설" },
   { sym: "034020", name: "두산에너빌리티", market: "KR", sector: "원전/기계" },
   { sym: "015760", name: "한국전력", market: "KR", sector: "유틸리티" },
@@ -83,7 +87,7 @@ async function fetchKR(token, code) {
   const d = await r.json().catch(() => null);
   const o = d && d.output;
   if (!o || !o.stck_prpr) return null;
-  return { price: Number(o.stck_prpr), chg: Number(o.prdy_ctrt) };
+  return { price: Number(o.stck_prpr), chg: Number(o.prdy_ctrt), cap: Number(o.hts_avls) || 0 };
 }
 
 async function fetchUS(token, excd, symb) {
@@ -130,10 +134,10 @@ export async function getQuotes(refresh) {
     const stale = SYMBOLS
       .filter((s) => {
         const it = cache.items[s.sym];
-        return !it || now - (it.ts || 0) > 30 * 1000;
+        return !it || now - (it.ts || 0) > 45 * 1000;
       })
       .sort((a, b) => ((cache.items[a.sym] || {}).ts || 0) - ((cache.items[b.sym] || {}).ts || 0))
-      .slice(0, 5);
+      .slice(0, 6);
     if (stale.length) {
       try {
         const token = await getToken();

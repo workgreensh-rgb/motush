@@ -16,6 +16,7 @@ export default async function handler(req, res) {
         price: it.price || null,
         usd: it.usd || null,
         chg: typeof it.chg === "number" ? it.chg : null,
+        cap: it.cap || 0,
         hist: it.hist || [],
         ts: it.ts || null
       };
