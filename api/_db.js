@@ -76,6 +76,22 @@ export async function init() {
   await sql`ALTER TABLE feed ADD COLUMN IF NOT EXISTS avatar TEXT DEFAULT '🐥'`;
   await sql`ALTER TABLE feed ADD COLUMN IF NOT EXISTS reason TEXT`;
   await sql`ALTER TABLE feed ADD COLUMN IF NOT EXISTS mkt TEXT`;
+
+  // 일회성 정리: HB·한빛건설 잔재 제거 (보유·거래기록·피드)
+  try {
+    const done = await sql`SELECT 1 FROM kv WHERE k = 'cleanup_hb_v1'`;
+    if (!done.length) {
+      await sql`UPDATE accounts SET holdings = (holdings - 'HB') - 'HBC'`;
+      await sql`UPDATE accounts SET trades = COALESCE(
+        (SELECT jsonb_agg(t) FROM jsonb_array_elements(accounts.trades) t
+         WHERE NOT (t->>'code' IN ('HB','HBC') OR t->>'name' LIKE '%한빛%')),
+        '[]'::jsonb)
+        WHERE trades <> '[]'::jsonb`;
+      await sql`DELETE FROM feed WHERE stock IN ('HB','HBC') OR stock LIKE '%한빛%'`;
+      await sql`INSERT INTO kv (k, v) VALUES ('cleanup_hb_v1', '{"done":true}'::jsonb)
+        ON CONFLICT (k) DO NOTHING`;
+    }
+  } catch (e) {}
   ready = true;
 }
 

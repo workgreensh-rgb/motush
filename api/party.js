@@ -63,10 +63,12 @@ export default async function handler(req, res) {
         if (!p.length) return res.status(404).json({ error: "파티를 찾을 수 없습니다" });
 
         const mem = await sql`
-          SELECT u.username, u.name, a.cash, a.holdings, a.trades, a.trade_count
+          SELECT u.username, u.name, a.cash, a.holdings, a.trades, a.trade_count,
+                 mo.content AS memo
           FROM party_members m
           JOIN users u ON u.id = m.user_id
           JOIN accounts a ON a.user_id = u.id
+          LEFT JOIN memos mo ON mo.user_id = u.id
           WHERE m.party_id = ${pid} ORDER BY m.joined_at`;
 
         const cache = await getQuotes(false);
@@ -81,7 +83,18 @@ export default async function handler(req, res) {
           (r.trades || []).forEach((t) => {
             feed.push({ name: r.name, avatar: st.av, ts: t.ts, side: t.side, stock: t.name, n: t.n, price: t.price, reason: t.reason || "", mkt: t.mkt || "" });
           });
-          return { username: r.username, name: r.name, avatar: st.av, equity: eq, ret, breakdown: bd };
+          const pos = [];
+          const hh = r.holdings || {};
+          for (const sym of Object.keys(hh)) {
+            const it = cache.items[sym];
+            const qty = Number(hh[sym].qty) || 0;
+            const v = it && it.price ? Math.round(it.price * qty) : Number(hh[sym].cost) || 0;
+            pos.push({ sym, name: (it && it.name) || sym, qty, value: v,
+                       weight: eq > 0 ? (v / eq) * 100 : 0, cls: classify(sym) });
+          }
+          pos.sort((a, b) => b.value - a.value);
+          return { username: r.username, name: r.name, avatar: st.av, equity: eq, ret,
+                   breakdown: bd, positions: pos, memo: String(r.memo || "").slice(0, 2000) };
         });
         feed.sort((a, b) => b.ts - a.ts);
         feed = feed.slice(0, 40);

@@ -26,6 +26,8 @@ background:none;cursor:pointer;border-bottom:2px solid transparent;font-weight:6
 .tab.on{color:var(--tx);border-color:var(--gold)}
 .grid{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:12px;margin-top:12px}
 @media(max-width:820px){.grid{grid-template-columns:1fr}}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:start}
+@media(max-width:820px){.grid2{grid-template-columns:1fr}}
 .stack{display:flex;flex-direction:column;gap:12px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-top:0}
 .mt12{margin-top:12px}
@@ -904,8 +906,20 @@ function renderPartyDetail(el){
   items.forEach(function(x){lg+='<div class="num"><span class="sw" style="background:'+x.c+'"></span>'+x.l+' '+(x.v/total*100).toFixed(1)+'% · '+fmt(x.v)+'원</div>';});
   h+='<div class="card mt12"><div class="chead"><span class="t">포트폴리오 비중 · '+esc(label)+'</span><span class="s">자산군 기준</span></div>'
     +'<div style="padding:10px 14px 4px">'+chips+'</div>'
-    +(total>0?'<div class="donutbox">'+donutSVG(items,110)+'<div class="legend">'+lg+'</div></div>':'<div class="row"><span class="sub">데이터가 없습니다</span></div>')
-    +'</div>';
+    +(total>0?'<div class="donutbox">'+donutSVG(items,110)+'<div class="legend">'+lg+'</div></div>':'<div class="row"><span class="sub">데이터가 없습니다</span></div>');
+  if(PARTY_FOCUS!=="all"){
+    var fm=null;P.members.forEach(function(m){if(m.username===PARTY_FOCUS)fm=m;});
+    if(fm&&fm.positions&&fm.positions.length){
+      h+='<div class="chead" style="border-top:1px solid var(--line)"><span class="t" style="font-size:13px">보유 종목</span><span class="s">평가액순 · 비중=평가액÷총자산</span></div>';
+      fm.positions.forEach(function(x){
+        h+='<div class="row"><div class="grow"><div class="nm">'+esc(x.name)+'</div><div class="sub num">'+esc(String(x.sym))+' · '+fmtQ(x.qty,x.cls==="kr"?"KR":(x.cls==="coin"?"COIN":"US"))+'</div></div>'
+          +'<div class="pr num"><b>'+fmt(x.value)+'원</b><div class="sub">'+x.weight.toFixed(1)+'%</div></div></div>';
+      });
+    }else if(fm){
+      h+='<div class="row"><span class="sub">보유 종목이 없습니다 (전액 현금)</span></div>';
+    }
+  }
+  h+='</div>';
 
   /* 멤버 랭킹 */
   h+='<div class="card mt12"><div class="chead"><span class="t">멤버</span><span class="s">총자산순</span></div>';
@@ -914,6 +928,18 @@ function renderPartyDetail(el){
       +'<div class="grow nm"><span class="av">'+(m.avatar||"🐥")+'</span>'+esc(m.name)+(me&&m.username===me.username?'<span class="sub"> (나)</span>':'')+'</div>'
       +'<div class="pr num"><b>'+fmt(m.equity)+'원</b><div class="sub"><span class="'+(m.ret>=0?"up":"dn")+'">'+pct(m.ret)+'</span></div></div></div>';
   });
+  h+='</div>';
+
+  /* 멤버 메모장 공유 */
+  h+='<div class="card mt12"><div class="chead"><span class="t">멤버 메모장</span><span class="s">시장 탭 메모가 파티원에게 공유됩니다</span></div>';
+  var anyMemo=false;
+  P.members.forEach(function(m){
+    if(!m.memo)return;anyMemo=true;
+    h+='<div class="row" style="align-items:flex-start"><span class="av">'+(m.avatar||"🐥")+'</span>'
+      +'<div class="grow"><div class="nm">'+esc(m.name)+(me&&m.username===me.username?'<span class="sub"> (나)</span>':'')+'</div>'
+      +'<div class="sub" style="white-space:pre-wrap;margin-top:3px;color:var(--tx);font-size:12px;line-height:1.5">'+esc(m.memo)+'</div></div></div>';
+  });
+  if(!anyMemo)h+='<div class="row"><span class="sub">아직 작성된 메모가 없습니다. 시장 탭의 메모장에 쓰면 여기에 공유됩니다.</span></div>';
   h+='</div>';
 
   /* 멤버 매매 사유 피드 */
@@ -1031,9 +1057,29 @@ function renderPort(){
 var lastBoard=null;
 async function loadRank(){
   try{var r=await api("/api/rank");lastBoard=r.board;renderRank();}catch(e){flash(e.message);}
+  loadPartyRanks();
+}
+var PRANKS=null; // [{id,name,members:[...]}]
+async function loadPartyRanks(){
+  if(!me){PRANKS=null;renderRank();return;}
+  try{
+    var d=await api("/api/party?action=list");
+    PARTIES=d.parties;MY_COUNT=d.my_count;
+    var mine=(d.parties||[]).filter(function(p){return p.mine;});
+    if(!mine.length){PRANKS=[];renderRank();return;}
+    var out=[];
+    for(var i=0;i<mine.length;i++){
+      try{
+        var det=await api("/api/party?action=detail&id="+mine[i].id);
+        out.push({id:det.party.id,name:det.party.name,members:det.members});
+      }catch(e){}
+    }
+    PRANKS=out;renderRank();
+  }catch(e){PRANKS=[];renderRank();}
 }
 function renderRank(){
-  var h='<div class="card mt12"><div class="chead"><span class="t">통합 실시간 랭킹</span><button class="btn g" style="padding:5px 10px;font-size:11px" onclick="loadRank()">새로고침</button></div>';
+  /* 좌: 통합 랭킹 */
+  var h='<div class="grid2 mt12"><div><div class="card"><div class="chead"><span class="t">통합 실시간 랭킹</span><button class="btn g" style="padding:5px 10px;font-size:11px" onclick="loadRank()">새로고침</button></div>';
   if(!lastBoard)h+='<div class="row"><span class="sub">불러오는 중…</span></div>';
   else if(lastBoard.length===0)h+='<div class="row"><span class="sub">아직 참가자가 없습니다.</span></div>';
   else lastBoard.forEach(function(r,i){
@@ -1041,7 +1087,26 @@ function renderRank(){
       +'<div class="grow nm"><span class="av">'+(r.avatar||"🐥")+'</span>'+esc(r.name)+(me&&r.username===me.username?'<span class="sub"> (나)</span>':'')+'</div>'
       +'<div class="pr num"><b>'+fmt(r.equity)+'원</b><div class="sub"><span class="'+(r.ret>=0?"up":"dn")+'">'+pct(r.ret)+'</span></div></div></div>';
   });
-  h+='<div class="row"><span class="sub">참가자 전원의 계좌를 서버에서 실시간 집계한 순위입니다.</span></div></div>';
+  h+='<div class="row"><span class="sub">참가자 전원의 계좌를 서버에서 실시간 집계한 순위입니다.</span></div></div></div>';
+
+  /* 우: 파티원 실시간 랭킹 */
+  h+='<div class="stack">';
+  if(!me){
+    h+='<div class="card"><div class="chead"><span class="t">파티원 실시간 랭킹</span></div><div class="row"><div class="grow sub">로그인 후 이용할 수 있습니다</div><button class="btn g" style="padding:6px 12px;font-size:12px" onclick="openLogin()">로그인</button></div></div>';
+  }else if(PRANKS===null){
+    h+='<div class="card"><div class="chead"><span class="t">파티원 실시간 랭킹</span></div><div class="row"><span class="sub">불러오는 중…</span></div></div>';
+  }else if(!PRANKS.length){
+    h+='<div class="card"><div class="chead"><span class="t">파티원 실시간 랭킹</span></div><div class="row"><div class="grow sub">가입한 파티가 없습니다. 파티에 들어가면 파티원끼리의 순위가 여기에 표시됩니다.</div><button class="btn g" style="padding:6px 12px;font-size:12px" onclick="setTab(\'party\')">파티 탭</button></div></div>';
+  }else PRANKS.forEach(function(pk){
+    h+='<div class="card"><div class="chead"><span class="t">'+esc(pk.name)+'</span><span class="s">파티원 총자산순</span></div>';
+    pk.members.slice().sort(function(a,b){return b.equity-a.equity;}).forEach(function(m,i){
+      h+='<div class="row"><div class="rk num'+(i===0?" top":"")+'">'+(i+1)+'</div>'
+        +'<div class="grow nm"><span class="av">'+(m.avatar||"🐥")+'</span>'+esc(m.name)+(me&&m.username===me.username?'<span class="sub"> (나)</span>':'')+'</div>'
+        +'<div class="pr num"><b>'+fmt(m.equity)+'원</b><div class="sub"><span class="'+(m.ret>=0?"up":"dn")+'">'+pct(m.ret)+'</span></div></div></div>';
+    });
+    h+='</div>';
+  });
+  h+='</div></div>';
   document.getElementById("rankTab").innerHTML=h;
 }
 
