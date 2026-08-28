@@ -43,9 +43,39 @@ export async function init() {
     v JSONB NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT now()
   )`;
+  await sql`CREATE TABLE IF NOT EXISTS watchlist (
+    user_id INTEGER REFERENCES users(id),
+    sym TEXT NOT NULL,
+    name TEXT,
+    market TEXT,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    PRIMARY KEY (user_id, sym)
+  )`;
+  await sql`CREATE TABLE IF NOT EXISTS memos (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id),
+    content TEXT DEFAULT '',
+    updated_at TIMESTAMPTZ DEFAULT now()
+  )`;
+  await sql`CREATE TABLE IF NOT EXISTS parties (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    intro TEXT DEFAULT '',
+    pass_hash TEXT,
+    owner_id INTEGER REFERENCES users(id),
+    max_members INTEGER DEFAULT 10,
+    created_at TIMESTAMPTZ DEFAULT now()
+  )`;
+  await sql`CREATE TABLE IF NOT EXISTS party_members (
+    party_id INTEGER REFERENCES parties(id),
+    user_id INTEGER REFERENCES users(id),
+    joined_at TIMESTAMPTZ DEFAULT now(),
+    PRIMARY KEY (party_id, user_id)
+  )`;
   await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar TEXT DEFAULT '🐥'`;
   await sql`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS trade_count INTEGER DEFAULT 0`;
   await sql`ALTER TABLE feed ADD COLUMN IF NOT EXISTS avatar TEXT DEFAULT '🐥'`;
+  await sql`ALTER TABLE feed ADD COLUMN IF NOT EXISTS reason TEXT`;
+  await sql`ALTER TABLE feed ADD COLUMN IF NOT EXISTS mkt TEXT`;
   ready = true;
 }
 

@@ -54,6 +54,35 @@ export async function kvSet(k, v) {
     ON CONFLICT (k) DO UPDATE SET v = ${JSON.stringify(v)}::jsonb, updated_at = now()`;
 }
 
+/* ── 코인 (CoinGecko, 5분 캐시) ── */
+const COIN_KO = {
+  bitcoin: "비트코인", ethereum: "이더리움", tether: "테더", binancecoin: "BNB",
+  solana: "솔라나", ripple: "리플", "usd-coin": "USDC", dogecoin: "도지코인",
+  cardano: "에이다", tron: "트론", "staked-ether": "스테이킹 이더", avalanche: "아발란체"
+};
+export async function getCoins() {
+  const cached = await kvGet("coins");
+  if (cached && Date.now() - cached.ts < 5 * 60 * 1000) return cached;
+  try {
+    const r = await fetch(
+      "https://api.coingecko.com/api/v3/coins/markets?vs_currency=krw&order=market_cap_desc&per_page=10&page=1&price_change_percentage=24h"
+    );
+    const d = await r.json();
+    if (Array.isArray(d) && d.length) {
+      const coins = d.map((c) => ({
+        sym: String(c.symbol || "").toUpperCase(),
+        name: COIN_KO[c.id] || c.name,
+        price: Math.round(Number(c.current_price) || 0),
+        chg: Number(c.price_change_percentage_24h) || 0
+      }));
+      const out = { coins, ts: Date.now() };
+      await kvSet("coins", out);
+      return out;
+    }
+  } catch (e) {}
+  return cached || { coins: [], ts: 0 };
+}
+
 /* ── 토큰 ── */
 async function getToken() {
   const saved = await kvGet("kis_token");
@@ -247,7 +276,9 @@ export async function getQuotes(refresh) {
       const rows = await sql`SELECT holdings FROM accounts`;
       const set = {};
       rows.forEach((r) => {
-        Object.keys(r.holdings || {}).forEach((c) => { if (!BASE_SET[c]) set[c] = 1; });
+        Object.keys(r.holdings || {}).forEach((c) => {
+          if (!BASE_SET[c] && c.indexOf("C:") !== 0) set[c] = 1; // 코인 심볼은 제외
+        });
       });
       // 최근 조회된 편입 종목도 유지 (10분)
       Object.keys(cache.items).forEach((c) => {

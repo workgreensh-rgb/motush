@@ -9,11 +9,19 @@ export default async function handler(req, res) {
     const user = await authUser(req);
     if (!user) return res.status(401).json({ error: "로그인이 필요합니다" });
 
-    const { code, side, qty } = req.body || {};
+    const { code, side, qty, reason } = req.body || {};
+
+    const rs = String(reason || "").trim();
+    if (rs.length < 2) return res.status(400).json({ error: "매매 사유를 입력해 주세요 (2자 이상)" });
+    if (rs.length > 200) return res.status(400).json({ error: "매매 사유는 200자 이내로 해주세요" });
+
     const meta = await resolveMeta(code);
-    const n = Math.floor(Number(qty));
     if (!meta) return res.status(400).json({ error: "존재하지 않는 종목입니다" });
     if (side !== "buy" && side !== "sell") return res.status(400).json({ error: "잘못된 주문 유형입니다" });
+
+    if (meta.market === "COIN")
+      return res.status(400).json({ error: "코인은 현재 시세 조회만 지원합니다" });
+    const n = Math.floor(Number(qty));
     if (!Number.isFinite(n) || n <= 0 || n > 100000000)
       return res.status(400).json({ error: "수량을 확인해 주세요" });
 
@@ -54,7 +62,7 @@ export default async function handler(req, res) {
     }
 
     trades = [
-      { ts: Date.now(), code: meta.sym, name: item.name || meta.name, side, n, price },
+      { ts: Date.now(), code: meta.sym, name: item.name || meta.name, side, n, price, reason: rs, mkt: meta.market },
       ...trades
     ].slice(0, 30);
 
@@ -63,8 +71,8 @@ export default async function handler(req, res) {
     const st = stageOf(ret, tradeCount);
 
     try {
-      await sql`INSERT INTO feed (name, avatar, stock, side, qty, price)
-        VALUES (${user.name}, ${st.av}, ${item.name || meta.name}, ${side}, ${n}, ${price})`;
+      await sql`INSERT INTO feed (name, avatar, stock, side, qty, price, reason, mkt)
+        VALUES (${user.name}, ${st.av}, ${item.name || meta.name}, ${side}, ${n}, ${price}, ${rs}, ${meta.market})`;
     } catch (e) {}
 
     await sql`
@@ -78,7 +86,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       ok: true,
-      filled: { code: meta.sym, name: item.name || meta.name, side, n, price },
+      filled: { code: meta.sym, name: item.name || meta.name, side, n, price, mkt: meta.market },
       cash: Math.round(cash),
       holdings, trades,
       trade_count: tradeCount,
