@@ -31,7 +31,7 @@ background:none;cursor:pointer;border-bottom:2px solid transparent;font-weight:6
 .grid3{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr) minmax(0,6fr);gap:12px;margin-top:12px}
 @media(max-width:1150px){.grid3{grid-template-columns:1fr 1fr}.grid3>div:first-child{grid-column:1/-1}}
 @media(max-width:820px){.grid3{grid-template-columns:1fr}.grid3>div:first-child{grid-column:auto}}
-.kwcloud{position:relative;height:500px;overflow:hidden}
+.kwcloud{position:relative;height:305px;overflow:hidden}
 .kw{position:absolute;cursor:pointer;line-height:1;white-space:nowrap;transform:translate(-50%,-50%);transition:left .6s ease,top .6s ease,font-size .6s ease,color .6s ease,opacity .5s ease}
 .kw:hover{z-index:5;filter:brightness(1.35)}
 .stack{display:flex;flex-direction:column;gap:12px}
@@ -406,7 +406,7 @@ function kwHash(str){var h=0;for(var i=0;i<str.length;i++){h=(h*31+str.charCodeA
 function renderKw(){
   var el=document.getElementById("kwCloud");
   if(!el)return;
-  var W=Math.min(el.clientWidth||600,560), H=el.clientHeight||250;
+  var W=Math.min(el.clientWidth||600,560), H=el.clientHeight||400;
   var cx=(el.clientWidth||600)/2, cy=H/2, bx=cx-W/2;
   if(!KW||!KW.length){
     el.innerHTML='<span class="sub" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:12px;white-space:normal;text-align:center;width:80%">아직 키워드가 없습니다. 매매 사유와 메모장이 쌓이면 여기에 표시됩니다.</span>';

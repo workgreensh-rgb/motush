@@ -46,22 +46,29 @@ export default async function handler(req, res) {
 
       const bag = {};
       const now = Date.now();
-      // 1) 체결피드: 종목명(가중 3) + 매매사유 (24시간 내 2배)
+      const HALF = 36 * 3600 * 1000; // 반감기 36시간
+      const decay = (ts) => Math.pow(0.5, Math.max(0, now - ts) / HALF);
+      // 1) 체결피드: 종목명(가중 3) + 매매사유 — 오래될수록 점수 감쇠
       const fr = await sql`SELECT stock, reason, ts FROM feed ORDER BY id DESC LIMIT 300`;
       fr.forEach((r) => {
-        const fresh = now - new Date(r.ts).getTime() < 24 * 3600 * 1000 ? 2 : 1;
+        const d = decay(new Date(r.ts).getTime());
+        if (d < 0.03) return; // 약 7일 경과분은 제외 (방출)
         const nm = String(r.stock || "").trim();
-        if (nm.length >= 2) bag[nm] = (bag[nm] || 0) + 3 * fresh;
-        tokenize(r.reason, bag, 1 * fresh);
+        if (nm.length >= 2) bag[nm] = (bag[nm] || 0) + 3 * d;
+        tokenize(r.reason, bag, 1 * d);
       });
-      // 2) 메모장 전체
-      const mr = await sql`SELECT content FROM memos`;
-      mr.forEach((r) => tokenize(r.content, bag, 1));
+      // 2) 메모장: 마지막 수정 시점 기준 감쇠 (완만하게 절반만 적용)
+      const mr = await sql`SELECT content, updated_at FROM memos`;
+      mr.forEach((r) => {
+        const d = decay(new Date(r.updated_at || now).getTime());
+        const w = 0.3 + 0.7 * d; // 메모는 완전 소멸 대신 바닥 0.3 유지
+        tokenize(r.content, bag, w);
+      });
 
       const words = Object.keys(bag)
-        .map((w) => ({ w, n: bag[w] }))
+        .map((w) => ({ w, n: Math.round(bag[w] * 100) / 100 }))
         .sort((a, b) => b.n - a.n)
-        .slice(0, 24);
+        .slice(0, 20);
       await kvSet("kw_cloud", { words, ts: now });
       return res.status(200).json({ words, ts: now });
     }
