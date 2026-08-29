@@ -302,7 +302,7 @@ export async function getQuotes(refresh) {
       const it = cache.items[m.sym];
       if (!it || now - (it.ts || 0) > 90 * 1000) pool.push({ meta: m, ts: (it && it.ts) || 0 });
     });
-    const stale = pool.sort((a, b) => a.ts - b.ts).slice(0, 6);
+    const stale = pool.sort((a, b) => a.ts - b.ts).slice(0, 5);
     if (stale.length) {
       try {
         const token = await getToken();
@@ -312,7 +312,7 @@ export async function getQuotes(refresh) {
             if (q) putItem(cache, s.meta, q);
             else if (s.meta.extra) cache.items[s.meta.sym] = Object.assign({}, cache.items[s.meta.sym] || {}, { name: s.meta.name, market: s.meta.market, sector: s.meta.sector, fail: now, extra: true });
           } catch (e) {}
-          await sleep(130);
+          await sleep(100);
         }
         cache.ts = Date.now();
         await kvSet("quotes", cache);

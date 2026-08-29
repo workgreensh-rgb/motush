@@ -12,7 +12,7 @@ body{min-height:100vh;background:var(--bg);color:var(--tx);
 font-family:'Pretendard','Apple SD Gothic Neo','Noto Sans KR',system-ui,sans-serif;
 font-feature-settings:'tnum';padding-bottom:70px}
 .num{font-variant-numeric:tabular-nums}
-.wrap{max-width:980px;margin:0 auto;padding:0 14px}
+.wrap{max-width:1760px;margin:0 auto;padding:0 20px}
 .hd{border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:5}
 .hdrow{display:flex;align-items:center;justify-content:space-between;padding:12px 0;gap:8px}
 .logo{font-weight:800;font-size:18px;white-space:nowrap}
@@ -28,6 +28,12 @@ background:none;cursor:pointer;border-bottom:2px solid transparent;font-weight:6
 @media(max-width:820px){.grid{grid-template-columns:1fr}}
 .grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:start}
 @media(max-width:820px){.grid2{grid-template-columns:1fr}}
+.grid3{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr) minmax(0,6fr);gap:12px;margin-top:12px}
+@media(max-width:1150px){.grid3{grid-template-columns:1fr 1fr}.grid3>div:first-child{grid-column:1/-1}}
+@media(max-width:820px){.grid3{grid-template-columns:1fr}.grid3>div:first-child{grid-column:auto}}
+.kwcloud{position:relative;height:500px;overflow:hidden}
+.kw{position:absolute;cursor:pointer;line-height:1;white-space:nowrap;transform:translate(-50%,-50%);transition:left .6s ease,top .6s ease,font-size .6s ease,color .6s ease,opacity .5s ease}
+.kw:hover{z-index:5;filter:brightness(1.35)}
 .stack{display:flex;flex-direction:column;gap:12px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-top:0}
 .mt12{margin-top:12px}
@@ -57,7 +63,7 @@ white-space:nowrap;display:none;max-width:92vw;overflow:hidden;text-overflow:ell
 .ov{position:fixed;inset:0;background:rgba(4,6,10,.75);display:none;align-items:center;justify-content:center;z-index:10;padding:16px}
 .ov.show{display:flex}
 .dlg{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;width:100%;max-width:360px}
-.dlg.wide{max-width:980px;padding:16px}
+.dlg.wide{max-width:1400px;padding:16px}
 .in{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--tx);
 padding:11px 12px;font-size:15px;margin-top:8px;font-family:inherit}
 .in:focus{outline:2px solid var(--gold);outline-offset:-1px}
@@ -143,7 +149,7 @@ border-radius:99px;padding:4px 11px;font-size:11px;font-weight:700;cursor:pointe
 <div class="wrap">
   <!-- 홈 -->
   <div id="homeTab">
-    <div class="grid">
+    <div class="grid3">
       <div class="stack">
         <div class="card">
           <div class="chead"><span class="t">시총 상위</span>
@@ -157,13 +163,19 @@ border-radius:99px;padding:4px 11px;font-size:11px;font-weight:700;cursor:pointe
         </div>
       </div>
       <div class="stack">
-        <div class="card cal">
-          <div class="chead"><span class="t">📅 증시 캘린더</span><span class="s">다가오는 일정</span></div>
-          <div id="calBox"></div>
-        </div>
         <div class="card">
           <div class="chead"><span class="t">실시간 체결 피드</span><span class="s">모투선수들의 매매와 사유</span></div>
           <div id="feedBox"><div class="row"><span class="sub">불러오는 중…</span></div></div>
+        </div>
+      </div>
+      <div class="stack">
+        <div class="card kwcard">
+          <div class="chead"><span class="t">오늘의 급상승 키워드</span><span class="s">매매 사유·메모장 실시간 분석</span></div>
+          <div class="kwcloud" id="kwCloud"><span class="sub" style="font-size:12px">키워드를 모으는 중…</span></div>
+        </div>
+        <div class="card cal">
+          <div class="chead"><span class="t">📅 증시 캘린더</span><span class="s">다가오는 일정</span></div>
+          <div id="calBox"></div>
         </div>
       </div>
     </div>
@@ -384,6 +396,85 @@ async function loadMarket(){
     renderMarket();
   }catch(e){}
 }
+
+/* ── 급상승 키워드 클라우드 ── */
+var KW=null;
+async function loadKw(){
+  try{var d=await api("/api/feed?kw=1");KW=d.words;renderKw();}catch(e){}
+}
+function kwHash(str){var h=0;for(var i=0;i<str.length;i++){h=(h*31+str.charCodeAt(i))>>>0;}return h;}
+function renderKw(){
+  var el=document.getElementById("kwCloud");
+  if(!el)return;
+  var W=Math.min(el.clientWidth||600,560), H=el.clientHeight||250;
+  var cx=(el.clientWidth||600)/2, cy=H/2, bx=cx-W/2;
+  if(!KW||!KW.length){
+    el.innerHTML='<span class="sub" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:12px;white-space:normal;text-align:center;width:80%">아직 키워드가 없습니다. 매매 사유와 메모장이 쌓이면 여기에 표시됩니다.</span>';
+    return;
+  }
+  var hint=el.querySelector(".sub");if(hint)hint.remove();
+  var max=KW[0].n, min=KW[KW.length-1].n, span=Math.max(1,max-min);
+  var PALW=["#8ab8ff","#5f8fe8","#4a78c9","#7aa7f0","#3f66ad","#9cc4ff","#6f97d8"];
+  var ACC=["#e8c66a","#7fd6c2"];
+  var cv=document.createElement("canvas").getContext("2d");
+  var FAM=getComputedStyle(el).fontFamily||"sans-serif";
+  var placed=[];
+  function hit(x,y,w,h){
+    if(x-w/2<bx+4||x+w/2>bx+W-4||y-h/2<2||y+h/2>H-2)return true;
+    for(var i=0;i<placed.length;i++){var r=placed[i];
+      if(Math.abs(x-r.x)<(w+r.w)/2+3&&Math.abs(y-r.y)<(h+r.h)/2+2)return true;}
+    return false;
+  }
+  var targets={};
+  KW.forEach(function(k,rank){ // 빈도 큰 것부터 중앙 자리 선점
+    var t=(k.n-min)/span;
+    var fs=Math.round(13+t*21);
+    var wt=t>0.55?700:(t>0.25?600:400);
+    cv.font=wt+" "+fs+"px "+FAM;
+    var tw=cv.measureText(k.w).width+7, th=fs*1.22;
+    var a0=(kwHash(k.w)%628)/100, x=cx, y=cy, ok=!hit(x,y,tw,th);
+    for(var a=0;!ok&&a<600;a++){
+      var ang=a0+a*0.5, r=1+a*0.42;
+      x=cx+r*Math.cos(ang); y=cy+r*0.78*Math.sin(ang);
+      ok=!hit(x,y,tw,th);
+    }
+    if(!ok)return;
+    placed.push({x:x,y:y,w:tw,h:th});
+    targets[k.w]={x:Math.round(x),y:Math.round(y),fs:fs,wt:wt,
+      col:rank<2?ACC[rank]:PALW[kwHash(k.w)%PALW.length]};
+  });
+  // 차분 갱신: 기존 단어는 이동·확대 애니메이션, 새 단어는 페이드인, 빠진 단어는 페이드아웃
+  var cur={};
+  el.querySelectorAll(".kw").forEach(function(sp){cur[sp.dataset.w]=sp;});
+  Object.keys(targets).forEach(function(w){
+    var tg=targets[w], sp=cur[w];
+    if(!sp){
+      sp=document.createElement("span");
+      sp.className="kw num";sp.dataset.w=w;sp.textContent=w;
+      sp.style.opacity="0";
+      sp.onclick=function(){kwSearch(w);};
+      sp.style.left=tg.x+"px";sp.style.top=tg.y+"px";
+      el.appendChild(sp);
+      requestAnimationFrame(function(){requestAnimationFrame(function(){sp.style.opacity="1";});});
+    }
+    sp.style.left=tg.x+"px";sp.style.top=tg.y+"px";
+    sp.style.fontSize=tg.fs+"px";sp.style.fontWeight=tg.wt;sp.style.color=tg.col;
+    delete cur[w];
+  });
+  Object.keys(cur).forEach(function(w){
+    var sp=cur[w];sp.style.opacity="0";
+    setTimeout(function(){if(sp.parentNode)sp.parentNode.removeChild(sp);},650);
+  });
+}
+var kwRsz=null;
+window.addEventListener("resize",function(){
+  clearTimeout(kwRsz);kwRsz=setTimeout(function(){if(curTab==="home")renderKw();},300);
+});
+function kwSearch(w){
+  openSearch("trade");
+  var inp=document.getElementById("searchIn");
+  inp.value=w;renderSearch();
+}
 async function loadParties(){
   if(!me)return;
   try{var d=await api("/api/party?action=list");PARTIES=d.parties;MY_COUNT=d.my_count;renderParty();}catch(e){}
@@ -459,7 +550,7 @@ function setTab(t){
     document.getElementById(k+"Tab").classList.toggle("hidden",k!==t);
   });
   if(t==="rank")loadRank();
-  if(t==="home"){loadFeed();loadCoins();}
+  if(t==="home"){loadFeed();loadCoins();loadKw();}
   if(t==="market"){if(me){loadMarket();if(!PARTIES)loadParties();}}
   if(t==="party"){if(me)loadParties();}
   renderAll();
@@ -538,7 +629,7 @@ function renderCal(){
   var today=new Date();today.setHours(0,0,0,0);
   var wd=["일","월","화","수","목","금","토"];
   var h="";
-  CALENDAR.filter(function(c){return new Date(c.dt+"T00:00:00")>=today;}).slice(0,8).forEach(function(c){
+  CALENDAR.filter(function(c){return new Date(c.dt+"T00:00:00")>=today;}).slice(0,12).forEach(function(c){
     var d=new Date(c.dt+"T00:00:00");
     var lb=(d.getMonth()+1)+"/"+d.getDate()+" "+wd[d.getDay()];
     h+='<div class="row"><span class="d">'+lb+'</span><div class="grow"><div class="nm'+(c.imp?' imp':'')+'">'+c.t+'</div>'+(c.s?'<div class="sub">'+c.s+'</div>':'')+'</div></div>';
@@ -1122,13 +1213,14 @@ function renderAll(){
 /* ───────── 시작 ───────── */
 document.getElementById("lgPw").addEventListener("keydown",function(e){if(e.key==="Enter")submitAuth();});
 renderCal();
-setInterval(loadQuotes,10000);
-setInterval(beat,20000);
-setInterval(function(){if(curTab==="home")loadFeed();},20000);
-setInterval(function(){if(curTab==="home")loadCoins();},60000);
+setInterval(loadQuotes,15000);
+setInterval(beat,40000);
+setInterval(function(){if(curTab==="home")loadFeed();},30000);
+setInterval(function(){if(curTab==="home")loadCoins();},300000);
+setInterval(function(){if(curTab==="home")loadKw();},600000);
 (async function(){
   getVid();
-  loadQuotes();loadFeed();loadCoins();beat();
+  loadQuotes();loadFeed();loadCoins();loadKw();beat();
   if(getToken()){
     try{await enterApp();}catch(e){setToken(null);}
   }
