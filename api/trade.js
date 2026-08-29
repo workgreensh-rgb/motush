@@ -19,11 +19,18 @@ export default async function handler(req, res) {
     if (!meta) return res.status(400).json({ error: "존재하지 않는 종목입니다" });
     if (side !== "buy" && side !== "sell") return res.status(400).json({ error: "잘못된 주문 유형입니다" });
 
-    if (meta.market === "COIN")
-      return res.status(400).json({ error: "코인은 현재 시세 조회만 지원합니다" });
-    const n = Math.floor(Number(qty));
-    if (!Number.isFinite(n) || n <= 0 || n > 100000000)
-      return res.status(400).json({ error: "수량을 확인해 주세요" });
+    const rq = (x) => Math.round(Number(x) * 1e8) / 1e8; // 소수점 8자리 반올림
+    const isCoin = meta.market === "COIN";
+    let n;
+    if (isCoin) {
+      n = rq(qty);
+      if (!Number.isFinite(n) || n < 0.000001 || n > 1000000)
+        return res.status(400).json({ error: "수량을 확인해 주세요 (소수점 6자리까지)" });
+    } else {
+      n = Math.floor(Number(qty));
+      if (!Number.isFinite(n) || n <= 0 || n > 100000000)
+        return res.status(400).json({ error: "수량을 확인해 주세요" });
+    }
 
     let cache = await getQuotes(false);
     let item = cache.items[meta.sym];
@@ -44,20 +51,21 @@ export default async function handler(req, res) {
     const tradeCount = Number(rows[0].trade_count || 0) + 1;
 
     const price = item.price; // 서버 캐시 시세로 체결 (조작 방지)
-    const gross = price * n;
+    const gross = Math.round(price * n);
+    if (gross < 100) return res.status(400).json({ error: "주문금액이 너무 작습니다" });
     const fee = Math.round(gross * FEE_RATE);
 
     if (side === "buy") {
       if (gross + fee > cash) return res.status(400).json({ error: "현금이 부족합니다" });
       cash -= gross + fee;
       const h = holdings[meta.sym] || { qty: 0, cost: 0 };
-      holdings[meta.sym] = { qty: h.qty + n, cost: h.cost + gross };
+      holdings[meta.sym] = { qty: rq(h.qty + n), cost: h.cost + gross };
     } else {
       const h = holdings[meta.sym];
-      if (!h || h.qty < n) return res.status(400).json({ error: "보유 수량이 부족합니다" });
+      if (!h || rq(h.qty) < rq(n)) return res.status(400).json({ error: "보유 수량이 부족합니다" });
       cash += gross - fee;
-      const rest = h.qty - n;
-      if (rest === 0) delete holdings[meta.sym];
+      const rest = rq(h.qty - n);
+      if (rest <= 0) delete holdings[meta.sym];
       else holdings[meta.sym] = { qty: rest, cost: Math.round(h.cost * (rest / h.qty)) };
     }
 

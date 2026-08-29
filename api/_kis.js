@@ -65,11 +65,17 @@ export async function getCoins() {
   if (cached && Date.now() - cached.ts < 5 * 60 * 1000) return cached;
   try {
     const r = await fetch(
-      "https://api.coingecko.com/api/v3/coins/markets?vs_currency=krw&order=market_cap_desc&per_page=10&page=1&price_change_percentage=24h"
+      "https://api.coingecko.com/api/v3/coins/markets?vs_currency=krw&order=market_cap_desc&per_page=20&page=1&price_change_percentage=24h"
     );
     const d = await r.json();
     if (Array.isArray(d) && d.length) {
-      const coins = d.map((c) => ({
+      const SKIP = ["figure-heloc", "usds", "weth", "wrapped-bitcoin", "wrapped-steth", "staked-ether", "wrapped-beacon-eth", "susds", "coinbase-wrapped-btc", "binance-bridged-usdt-bnb-smart-chain"];
+    const coins = d.filter((c) => {
+      const id = String(c.id || "");
+      if (SKIP.indexOf(id) >= 0) return false;
+      if (id.indexOf("wrapped") >= 0 || id.indexOf("staked") >= 0 || id.indexOf("bridged") >= 0) return false;
+      return true;
+    }).slice(0, 10).map((c) => ({
         sym: String(c.symbol || "").toUpperCase(),
         name: COIN_KO[c.id] || c.name,
         price: Math.round(Number(c.current_price) || 0),
@@ -147,6 +153,22 @@ async function fetchUS(token, excd, symb) {
   if (!last) return null;
   return { usd: last, chg: Number(o.rate) || 0 };
 }
+
+// 코인 시세를 quotes 캐시에 병합 (보유 평가·체결용, sym = "C:BTC")
+export async function mergeCoins(cache) {
+  try {
+    const { coins } = await getCoins();
+    (coins || []).forEach((c) => {
+      if (!c.price) return;
+      cache.items["C:" + c.sym] = {
+        price: c.price, chg: c.chg, name: c.name,
+        market: "COIN", sector: "코인", ts: Date.now(), extra: false
+      };
+    });
+  } catch (e) {}
+  return cache;
+}
+
 async function getFx() {
   const c = await kvGet("fx");
   if (c && Date.now() - c.ts < 3600 * 1000) return c.rate;
@@ -204,6 +226,12 @@ export async function getMaster() {
 /* ── 종목 해석 (임의 코드/티커 → 메타) ── */
 export async function resolveMeta(codeRaw) {
   const code = String(codeRaw || "").trim().toUpperCase();
+  if (/^C:[A-Z0-9]{2,10}$/.test(code)) {
+    const { coins } = await getCoins();
+    const c = (coins || []).find((x) => "C:" + x.sym === code);
+    if (!c) return null;
+    return { sym: code, name: c.name, market: "COIN", sector: "코인", coin: true };
+  }
   const base = SYMBOLS.find((s) => s.sym === code);
   if (base) return base;
   if (/^\d{6}$/.test(code)) {
@@ -248,6 +276,11 @@ export async function watchSymbol(code) {
   if (!meta) return { cache: (await kvGet("quotes")) || { items: {}, ts: 0 }, meta: null };
   let cache = (await kvGet("quotes")) || { items: {}, ts: 0 };
   const fx = await getFx();
+  if (meta.coin) {
+    await mergeCoins(cache);
+    cache.fx = fx;
+    return { cache, meta };
+  }
   const it = cache.items[meta.sym];
   if (!(it && it.price && Date.now() - (it.ts || 0) < 45 * 1000)) {
     try {
@@ -319,6 +352,7 @@ export async function getQuotes(refresh) {
       } catch (e) {}
     }
   }
+  await mergeCoins(cache);
   cache.fx = fx;
   return cache;
 }

@@ -604,7 +604,7 @@ function renderMovers(){
   }else{
     COINS.forEach(function(c,i){
       var up=c.chg>=0;
-      h+='<div class="row"><span class="rk num">'+(i+1)+'</span>'
+      h+='<div class="row click" onclick="openTrade(\'C:'+c.sym+'\')"><span class="rk num">'+(i+1)+'</span>'
         +'<div class="grow"><div class="nm">'+esc(c.name)+'</div><div class="sub">'+esc(c.sym)+' · 24h</div></div>'
         +'<div class="pr num"><b>'+fmt(c.price)+'</b><div class="sub"><span class="'+(up?"up":"dn")+'">'+pct(c.chg)+'</span></div></div></div>';
     });
@@ -810,6 +810,11 @@ function drawSearch(q,ql){
     h+='<div class="row click" onclick="closeSearch();openTrade(\''+r.code+'\')"><div class="grow"><div class="nm">'+esc(r.name)+'</div><div class="sub">'+r.mkt+' · '+r.code+'</div></div>'
       +actBtn(r.code)+'</div>';
   });
+  COINS.filter(function(c){return !ql||c.name.toLowerCase().indexOf(ql)>=0||c.sym.toLowerCase().indexOf(ql)>=0;})
+    .slice(0,ql?6:3).forEach(function(c){
+      h+='<div class="row click" onclick="closeSearch();openTrade(\'C:'+c.sym+'\')"><div class="grow"><div class="nm">'+esc(c.name)+'</div><div class="sub">코인 · '+esc(c.sym)+'</div></div><div class="pr num"><b>'+fmt(c.price)+'</b></div>'
+        +actBtn("C:"+c.sym)+'</div>';
+    });
   if(/^[A-Za-z.]{1,6}$/.test(q)){
     var t=q.toUpperCase();
     h+='<div class="row click" onclick="closeSearch();openTrade(\''+t+'\')"><div class="grow"><div class="nm">🇺🇸 미국 티커 \''+t+'\'</div><div class="sub">차트 보기 · 거래 가능</div></div>'
@@ -848,8 +853,8 @@ function openTV(title,priceText,tvsym,tradeSym,allowChange,side){
   document.getElementById("chartOv").classList.add("show");
 }
 async function openTrade(code,side){
-  if(isCoinCode(code)){flash("코인은 현재 시세 조회만 지원합니다");return;}
   var p=priceOf(code);
+  if(!p&&isCoinCode(code)){try{var cd=await api("/api/coins");if(cd&&cd.coins)COINS=cd.coins;}catch(e){}p=priceOf(code);}
   if(!p&&!isCoinCode(code)){
     flash("시세 불러오는 중…");
     try{
