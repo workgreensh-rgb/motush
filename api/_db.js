@@ -77,6 +77,17 @@ export async function init() {
   await sql`ALTER TABLE feed ADD COLUMN IF NOT EXISTS reason TEXT`;
   await sql`ALTER TABLE feed ADD COLUMN IF NOT EXISTS mkt TEXT`;
   await sql`ALTER TABLE feed ALTER COLUMN qty TYPE NUMERIC`;
+  await sql`CREATE TABLE IF NOT EXISTS journal (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id),
+    kind TEXT NOT NULL DEFAULT 'memo',
+    text TEXT NOT NULL,
+    mood TEXT,
+    stock TEXT,
+    side TEXT,
+    ts TIMESTAMPTZ DEFAULT now()
+  )`;
+  await sql`CREATE INDEX IF NOT EXISTS journal_user_id_idx ON journal (user_id, id DESC)`;
 
   // 일회성 정리: HB·한빛건설 잔재 제거 (보유·거래기록·피드)
   try {

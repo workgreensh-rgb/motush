@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>모투장 · 친구들과 겨루는 모의투자</title>
+<title>비버의 모투장 · 모아서 짓고, 굴려서 불린다</title>
 <style>
 :root{--bg:#0B0E14;--panel:#141926;--panel2:#1B2233;--line:#252D42;--tx:#DCE3F0;--dim:#8B94AB;
 --up:#F0424D;--dn:#4C82F7;--gold:#E8B84B;}
@@ -18,6 +18,14 @@ font-feature-settings:'tnum';padding-bottom:70px}
 .logo{font-weight:800;font-size:18px;white-space:nowrap}
 .logo em{font-style:normal;color:var(--gold)}
 .logoName{cursor:pointer}
+.byline{font-size:11.5px;color:var(--sub);font-weight:500;margin-left:8px;white-space:nowrap}
+.byline b{color:#6fb3aa;font-weight:700}
+.storelink{font-size:11.5px;color:#6fb3aa;text-decoration:none;border:1px solid rgba(111,179,170,.35);border-radius:7px;padding:4px 9px;margin-left:10px;white-space:nowrap}
+.storelink:hover{background:rgba(111,179,170,.1)}
+.beeroFoot{margin:26px 0 40px;text-align:center;font-size:11.5px;color:var(--sub)}
+.beeroFoot b{color:#6fb3aa}
+.beeroFoot a{color:#6fb3aa;text-decoration:underline}
+@media(max-width:820px){.byline{display:none}}
 .eq{text-align:right;font-size:12px;color:var(--dim)}
 .eq b{display:block;font-size:15px;color:var(--tx)}
 .tabs{display:flex;gap:4px}
@@ -31,6 +39,15 @@ background:none;cursor:pointer;border-bottom:2px solid transparent;font-weight:6
 .grid3{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr) minmax(0,6fr);gap:12px;margin-top:12px}
 @media(max-width:1150px){.grid3{grid-template-columns:1fr 1fr}.grid3>div:first-child{grid-column:1/-1}}
 @media(max-width:820px){.grid3{grid-template-columns:1fr}.grid3>div:first-child{grid-column:auto}}
+.jrwrite{padding:10px 14px;border-bottom:1px solid var(--line)}
+.jrctl{display:flex;align-items:center;justify-content:space-between;margin-top:7px;gap:8px}
+.moods{display:flex;gap:5px;flex-wrap:wrap}
+.mood{background:none;border:1px solid var(--line);color:var(--sub);border-radius:12px;padding:3px 9px;font-size:11px;cursor:pointer}
+.mood.on{border-color:var(--acc);color:var(--acc)}
+.jritem{padding:9px 14px;border-bottom:1px solid var(--line)}
+.jritem.trade{background:rgba(255,255,255,0.02)}
+.jritem .jmeta{font-size:10px;color:var(--sub);margin-bottom:3px;display:flex;justify-content:space-between;align-items:center}
+.jritem .jtxt{font-size:12.5px;color:var(--tx);line-height:1.55;white-space:pre-wrap;word-break:break-word}
 .kwcloud{position:relative;height:305px;overflow:hidden}
 .kw{position:absolute;cursor:pointer;line-height:1;white-space:nowrap;transform:translate(-50%,-50%);transition:left .6s ease,top .6s ease,font-size .6s ease,color .6s ease,opacity .5s ease}
 .kw:hover{z-index:5;filter:brightness(1.35)}
@@ -128,7 +145,9 @@ border-radius:99px;padding:4px 11px;font-size:11px;font-weight:700;cursor:pointe
 <div class="hd">
   <div class="wrap">
     <div class="hdrow">
-      <div class="logo"><span class="logoName" onclick="setTab('home')">모투장</span> <em>·</em>
+      <div class="logo"><span class="logoName" onclick="setTab('home')">🦫 비버의 모투장</span>
+        <span class="byline">모아서 짓고, 굴려서 불린다 · 주인장 <b>비로(BEERO)</b></span>
+        <a class="storelink" href="https://beaverlog-gamma.vercel.app" target="_blank" rel="noopener">🦫 비버의 저장소 ↗</a>
         <span id="hdUser" class="hidden"><span class="av" id="hdAv"></span><span id="hdName" style="font-size:13px;color:var(--dim);font-weight:600"></span>
         <button class="btn x" onclick="logout()">로그아웃</button></span>
         <button id="hdLogin" class="btn g" style="padding:6px 12px;font-size:12px" onclick="openLogin()">로그인</button>
@@ -183,7 +202,7 @@ border-radius:99px;padding:4px 11px;font-size:11px;font-weight:700;cursor:pointe
 
   <!-- 시장 -->
   <div id="marketTab" class="hidden">
-    <div class="grid">
+    <div class="grid3">
       <div class="stack">
         <div class="card">
           <div class="chead"><span class="t">내 관심종목</span>
@@ -191,15 +210,23 @@ border-radius:99px;padding:4px 11px;font-size:11px;font-weight:700;cursor:pointe
           </div>
           <div id="wlBox"><div class="row"><span class="sub">불러오는 중…</span></div></div>
         </div>
+      </div>
+      <div class="stack">
         <div class="card">
-          <div class="chead"><span class="t">메모장</span>
-            <button class="btn g" style="padding:5px 10px;font-size:11px" id="memoBtn" onclick="memoSave()">저장</button>
+          <div class="chead"><span class="t">📓 트레이딩 일지</span><span class="s" id="jrStreak"></span></div>
+          <div class="jrwrite">
+            <textarea class="in" id="jrIn" maxlength="500" rows="2" placeholder="오늘 시장에서 느낀 것, 배운 것을 남겨보세요"></textarea>
+            <div class="jrctl">
+              <span class="moods">
+                <button class="mood" data-m="확신" onclick="setMood('확신')">😎 확신</button>
+                <button class="mood" data-m="관망" onclick="setMood('관망')">🤔 관망</button>
+                <button class="mood" data-m="불안" onclick="setMood('불안')">😨 불안</button>
+                <button class="mood" data-m="풀매수" onclick="setMood('풀매수')">🔥 풀매수</button>
+              </span>
+              <button class="btn b" id="jrBtn" style="padding:6px 14px;font-size:12px" onclick="jrAdd()">기록</button>
+            </div>
           </div>
-          <div style="padding:10px 14px">
-            <textarea class="in" id="memoTa" style="margin-top:0;min-height:110px" maxlength="2000"
-              placeholder="투자 아이디어, 관찰 포인트 등을 기록하세요 (나만 볼 수 있음)"></textarea>
-            <div class="sub" id="memoStat" style="margin-top:5px"></div>
-          </div>
+          <div id="jrBox"><div class="row"><span class="sub">불러오는 중…</span></div></div>
         </div>
       </div>
       <div class="stack">
@@ -211,10 +238,6 @@ border-radius:99px;padding:4px 11px;font-size:11px;font-weight:700;cursor:pointe
           <div class="chead"><span class="t">파티원 포트폴리오</span><span class="s">국내·미국·코인·현금</span></div>
           <div id="partySumBox"></div>
         </div>
-        <div class="card">
-          <div class="chead"><span class="t">내 매매 사유 기록</span><span class="s">최근 30건</span></div>
-          <div id="myReasonBox"></div>
-        </div>
       </div>
     </div>
   </div>
@@ -222,6 +245,7 @@ border-radius:99px;padding:4px 11px;font-size:11px;font-weight:700;cursor:pointe
   <div id="rankTab" class="hidden"></div>
   <div id="partyTab" class="hidden"></div>
   <div id="portTab" class="hidden"></div>
+  <div class="beeroFoot">🦫 made by <b>비로(BEERO)</b> — <a href="https://beaverlog-gamma.vercel.app" target="_blank" rel="noopener">비버의 저장소</a>와 한 집안입니다</div>
 </div>
 
 <div class="visitors num"><span class="dot"></span>동시접속 <b id="vAll">-</b> · 선수 <b id="vPl">-</b> · Total <b id="vTot">-</b></div>
@@ -238,8 +262,8 @@ border-radius:99px;padding:4px 11px;font-size:11px;font-weight:700;cursor:pointe
 <!-- 로그인/회원가입 모달 -->
 <div class="ov" id="loginOv" onclick="if(event.target===this)this.classList.remove('show')">
   <div class="dlg">
-    <div class="big">모투장 <span style="color:var(--gold)">·</span></div>
-    <div style="color:var(--dim);font-size:14px;margin-top:4px;font-weight:700">친구들과 겨루는 모의투자</div>
+    <div class="big">🦫 비버의 모투장</div>
+    <div style="color:var(--dim);font-size:14px;margin-top:4px;font-weight:700">모아서 짓고, 굴려서 불린다 · 주인장 <span style="color:#6fb3aa">비로(BEERO)</span></div>
     <div id="signupFields" class="hidden">
       <input class="in" id="suName" placeholder="닉네임 (랭킹에 표시)" maxlength="20" style="margin-top:16px">
       <div class="sub" style="margin-top:10px;line-height:1.6">모든 선수는 🐣 아기새로 시작합니다.<br>거래와 수익률로 🐥 청춘새 → 🦅 독수리로 성장시키세요!</div>
@@ -331,7 +355,6 @@ var me=null, curTab="home", modal=null, signupMode=false, busy=false;
 var QUOTES={fx:null,list:[]};
 var FEED=[], COINS=[];
 var CAP_MODE="KR";
-var WATCH=[], MEMO_LOADED=false;
 var PARTIES=null, MY_COUNT=0, PARTY_VIEW=null, PDET=null, PARTY_FOCUS="all", JOIN_TARGET=null;
 var SEARCH_MODE="trade";
 
@@ -387,12 +410,14 @@ function mktOf(code){return isCoinCode(code)?"COIN":(/^\d{6}$/.test(code)?"KR":"
 async function loadQuotes(){try{var d=await api("/api/quotes");if(d&&d.list){QUOTES=d;renderAll();}}catch(e){}}
 async function loadFeed(){try{var d=await api("/api/feed");if(d&&d.feed){FEED=d.feed;renderFeed();}}catch(e){}}
 async function loadCoins(){try{var d=await api("/api/coins");if(d&&d.coins){COINS=d.coins;renderAll();}}catch(e){}}
+var JOURNAL=null, JR_STREAK=0, JR_MOOD=null;
 async function loadMarket(){
   if(!me)return;
   try{
     var d=await api("/api/market");
     WATCH=d.watch||[];
-    if(!MEMO_LOADED){document.getElementById("memoTa").value=d.memo||"";MEMO_LOADED=true;}
+    JOURNAL=d.journal||[];
+    JR_STREAK=d.streak||0;
     renderMarket();
   }catch(e){}
 }
@@ -521,7 +546,6 @@ async function submitAuth(){
   busy=false;document.getElementById("lgBtn").disabled=false;
 }
 function logout(){
-  setToken(null);me=null;WATCH=[];MEMO_LOADED=false;PARTIES=null;PARTY_VIEW=null;PDET=null;
   document.getElementById("hdUser").classList.add("hidden");
   document.getElementById("hdEq").classList.add("hidden");
   document.getElementById("hdLogin").classList.remove("hidden");
@@ -729,17 +753,28 @@ function renderMarket(){
     });
     el.innerHTML=h;
   }
-  /* 내 매매 사유 기록 */
-  el=document.getElementById("myReasonBox");
+  /* 트레이딩 일지 */
+  var st=document.getElementById("jrStreak");
+  st.textContent=me&&JR_STREAK>0?("🔥 "+JR_STREAK+"일 연속 기록"):"";
+  el=document.getElementById("jrBox");
   if(!me)el.innerHTML=login;
-  else if(!me.trades||!me.trades.length)el.innerHTML='<div class="row"><span class="sub">아직 거래가 없습니다</span></div>';
+  else if(JOURNAL===null)el.innerHTML='<div class="row"><span class="sub">불러오는 중…</span></div>';
+  else if(!JOURNAL.length)el.innerHTML='<div class="row"><span class="sub">첫 기록을 남겨보세요. 매수·매도 사유는 자동으로 이곳에 쌓입니다.</span></div>';
   else{
+    var MOOD_EMO={"확신":"😎","관망":"🤔","불안":"😨","풀매수":"🔥"};
     var h="";
-    me.trades.slice(0,10).forEach(function(tr){
-      var d=new Date(tr.ts);
-      h+='<div class="feeditem"><span class="'+(tr.side==="buy"?"up":"dn")+'" style="font-weight:700">'+(tr.side==="buy"?"매수":"매도")+'</span> <b>'+esc(tr.name)+'</b> '+fmtQ(tr.n,tr.mkt||mktOf(tr.code))+' · '+fmt(tr.price)+'원<span class="tm">'+(d.getMonth()+1)+'/'+d.getDate()+'</span>'
-        +(tr.reason?'<div class="rsn" style="padding-left:2px">"'+esc(tr.reason)+'"</div>':'')
-        +'</div>';
+    JOURNAL.forEach(function(j){
+      var d=new Date(j.ts);
+      var when=(d.getMonth()+1)+"/"+d.getDate()+" "+("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2);
+      var meta;
+      if(j.kind==="trade"){
+        meta=when+' · <span class="'+(j.side==="buy"?"up":"dn")+'" style="font-weight:700">'+(j.side==="buy"?"매수":"매도")+'</span> <b style="color:var(--tx)">'+esc(j.stock)+'</b> · 자동 기록';
+      }else{
+        meta=when+' · ✍️ 메모'+(j.mood?' · '+(MOOD_EMO[j.mood]||"")+' '+esc(j.mood):'');
+      }
+      h+='<div class="jritem'+(j.kind==="trade"?" trade":"")+'"><div class="jmeta"><span>'+meta+'</span>'
+        +(j.kind==="memo"?'<button class="btn x" style="font-size:11px;padding:0 4px" onclick="jrDel('+j.id+')">✕</button>':'')
+        +'</div><div class="jtxt">'+(j.kind==="trade"?'"'+esc(j.text)+'"':esc(j.text))+'</div></div>';
     });
     el.innerHTML=h;
   }
@@ -755,14 +790,33 @@ async function addWatch(code){
     WATCH=d.watch||[];flash("관심종목에 추가했습니다");renderMarket();loadQuotes();
   }catch(e){flash(e.message);}
 }
-async function memoSave(){
+function setMood(m){
+  JR_MOOD=(JR_MOOD===m)?null:m;
+  document.querySelectorAll(".mood").forEach(function(b){
+    b.className="mood"+(b.dataset.m===JR_MOOD?" on":"");
+  });
+}
+async function jrAdd(){
   if(!me){needLogin();return;}
-  var b=document.getElementById("memoBtn");b.disabled=true;
+  var ta=document.getElementById("jrIn");
+  var txt=ta.value.trim();
+  if(!txt){flash("내용을 입력해 주세요");ta.focus();return;}
+  var b=document.getElementById("jrBtn");b.disabled=true;
   try{
-    await api("/api/market",{method:"POST",body:{action:"memo",content:document.getElementById("memoTa").value}});
-    document.getElementById("memoStat").textContent="저장됨 · "+new Date().toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"});
+    var d=await api("/api/market",{method:"POST",body:{action:"journal_add",content:txt,mood:JR_MOOD}});
+    JOURNAL=d.journal||[];JR_STREAK=d.streak||0;
+    ta.value="";setMood(null);renderMarket();
+    flash("기록했습니다 ✍️");
   }catch(e){flash(e.message);}
   b.disabled=false;
+}
+async function jrDel(id){
+  if(!me)return;
+  if(!confirm("이 기록을 삭제할까요?"))return;
+  try{
+    var d=await api("/api/market",{method:"POST",body:{action:"journal_del",id:id}});
+    JOURNAL=d.journal||[];JR_STREAK=d.streak||0;renderMarket();
+  }catch(e){flash(e.message);}
 }
 
 /* ───────── 검색 (거래/관심 겸용) ───────── */
@@ -940,7 +994,7 @@ async function trade(){
     me.cash=r.cash;me.holdings=r.holdings;me.trades=r.trades;
     if(r.stage){var lvUp=me.stage&&r.stage.lv>me.stage.lv;me.stage=r.stage;me.avatar=r.stage.av;me.trade_count=r.trade_count;document.getElementById("hdAv").textContent=me.avatar;if(lvUp)setTimeout(function(){flash("🎉 진화! "+r.stage.av+" "+r.stage.name+"(으)로 성장했습니다!");},1500);}
     var f=r.filled;
-    closeChart();renderAll();loadFeed();
+    closeChart();renderAll();loadFeed();loadMarket();
     if(PARTY_VIEW)loadPartyDetail(PARTY_VIEW);
     flash(f.name+" "+fmtQ(f.n,f.mkt)+" "+(f.side==="buy"?"매수":"매도")+" 체결 · "+fmt(f.price)+"원");
   }catch(e){
@@ -1026,16 +1080,22 @@ function renderPartyDetail(el){
   });
   h+='</div>';
 
-  /* 멤버 메모장 공유 */
-  h+='<div class="card mt12"><div class="chead"><span class="t">멤버 메모장</span><span class="s">시장 탭 메모가 파티원에게 공유됩니다</span></div>';
+  /* 멤버 일지 공유 */
+  h+='<div class="card mt12"><div class="chead"><span class="t">멤버 일지</span><span class="s">시장 탭 트레이딩 일지의 메모가 공유됩니다</span></div>';
+  var MOOD_EMO2={"확신":"😎","관망":"🤔","불안":"😨","풀매수":"🔥"};
   var anyMemo=false;
   P.members.forEach(function(m){
-    if(!m.memo)return;anyMemo=true;
+    if(!m.journal||!m.journal.length)return;anyMemo=true;
+    var inner="";
+    m.journal.forEach(function(j){
+      var d=new Date(j.ts);
+      inner+='<div style="margin-top:4px"><span class="sub num" style="font-size:10px">'+(d.getMonth()+1)+'/'+d.getDate()+(j.mood?' · '+(MOOD_EMO2[j.mood]||"")+j.mood:'')+'</span>'
+        +'<div class="sub" style="white-space:pre-wrap;color:var(--tx);font-size:12px;line-height:1.5">'+esc(j.text)+'</div></div>';
+    });
     h+='<div class="row" style="align-items:flex-start"><span class="av">'+(m.avatar||"🐥")+'</span>'
-      +'<div class="grow"><div class="nm">'+esc(m.name)+(me&&m.username===me.username?'<span class="sub"> (나)</span>':'')+'</div>'
-      +'<div class="sub" style="white-space:pre-wrap;margin-top:3px;color:var(--tx);font-size:12px;line-height:1.5">'+esc(m.memo)+'</div></div></div>';
+      +'<div class="grow"><div class="nm">'+esc(m.name)+(me&&m.username===me.username?'<span class="sub"> (나)</span>':'')+'</div>'+inner+'</div></div>';
   });
-  if(!anyMemo)h+='<div class="row"><span class="sub">아직 작성된 메모가 없습니다. 시장 탭의 메모장에 쓰면 여기에 공유됩니다.</span></div>';
+  if(!anyMemo)h+='<div class="row"><span class="sub">아직 작성된 일지가 없습니다. 시장 탭에서 기록하면 여기에 공유됩니다.</span></div>';
   h+='</div>';
 
   /* 멤버 매매 사유 피드 */

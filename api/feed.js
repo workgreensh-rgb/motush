@@ -57,7 +57,14 @@ export default async function handler(req, res) {
         if (nm.length >= 2) bag[nm] = (bag[nm] || 0) + 3 * d;
         tokenize(r.reason, bag, 1 * d);
       });
-      // 2) 메모장: 마지막 수정 시점 기준 감쇠 (완만하게 절반만 적용)
+      // 2) 트레이딩 일지(수동 메모): 피드와 동일 감쇠
+      const jr = await sql`SELECT text, ts FROM journal WHERE kind = 'memo' ORDER BY id DESC LIMIT 300`;
+      jr.forEach((r) => {
+        const d = decay(new Date(r.ts).getTime());
+        if (d < 0.03) return;
+        tokenize(r.text, bag, 1 * d);
+      });
+      // 3) (구) 메모장: 마지막 수정 시점 기준 감쇠 (완만하게 절반만 적용)
       const mr = await sql`SELECT content, updated_at FROM memos`;
       mr.forEach((r) => {
         const d = decay(new Date(r.updated_at || now).getTime());

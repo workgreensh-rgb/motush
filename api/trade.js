@@ -79,6 +79,10 @@ export default async function handler(req, res) {
     const st = stageOf(ret, tradeCount);
 
     try {
+      await sql`INSERT INTO journal (user_id, kind, text, mood, stock, side)
+        VALUES (${user.id}, 'trade', ${reason}, NULL, ${item.name || meta.name}, ${side})`;
+    } catch (e) {}
+    try {
       await sql`INSERT INTO feed (name, avatar, stock, side, qty, price, reason, mkt)
         VALUES (${user.name}, ${st.av}, ${item.name || meta.name}, ${side}, ${n}, ${price}, ${rs}, ${meta.market})`;
     } catch (e) {}

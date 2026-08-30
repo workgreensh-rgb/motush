@@ -63,13 +63,21 @@ export default async function handler(req, res) {
         if (!p.length) return res.status(404).json({ error: "파티를 찾을 수 없습니다" });
 
         const mem = await sql`
-          SELECT u.username, u.name, a.cash, a.holdings, a.trades, a.trade_count,
-                 mo.content AS memo
+          SELECT u.id AS uid, u.username, u.name, a.cash, a.holdings, a.trades, a.trade_count
           FROM party_members m
           JOIN users u ON u.id = m.user_id
           JOIN accounts a ON a.user_id = u.id
-          LEFT JOIN memos mo ON mo.user_id = u.id
           WHERE m.party_id = ${pid} ORDER BY m.joined_at`;
+        const uids = mem.map((r) => r.uid);
+        const jr = uids.length ? await sql`
+          SELECT user_id, text, mood, ts FROM journal
+          WHERE user_id = ANY(${uids}) AND kind = 'memo'
+          ORDER BY id DESC LIMIT 80` : [];
+        const jrBy = {};
+        jr.forEach((r) => {
+          (jrBy[r.user_id] = jrBy[r.user_id] || []).length < 3 &&
+            jrBy[r.user_id].push({ text: r.text, mood: r.mood || "", ts: new Date(r.ts).getTime() });
+        });
 
         const cache = await getQuotes(false);
         const agg = { kr: 0, us: 0, coin: 0, cash: 0 };
@@ -94,7 +102,7 @@ export default async function handler(req, res) {
           }
           pos.sort((a, b) => b.value - a.value);
           return { username: r.username, name: r.name, avatar: st.av, equity: eq, ret,
-                   breakdown: bd, positions: pos, memo: String(r.memo || "").slice(0, 2000) };
+                   breakdown: bd, positions: pos, journal: jrBy[r.uid] || [] };
         });
         feed.sort((a, b) => b.ts - a.ts);
         feed = feed.slice(0, 40);

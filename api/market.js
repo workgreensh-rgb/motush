@@ -13,10 +13,37 @@ export default async function handler(req, res) {
     const user = await authUser(req);
     if (!user) return res.status(401).json({ error: "로그인이 필요합니다" });
 
+    async function myJournal(uid) {
+      const rows = await sql`
+        SELECT id, kind, text, mood, stock, side, ts FROM journal
+        WHERE user_id = ${uid} ORDER BY id DESC LIMIT 60`;
+      return rows.map((r) => ({
+        id: r.id, kind: r.kind, text: r.text, mood: r.mood || "",
+        stock: r.stock || "", side: r.side || "", ts: new Date(r.ts).getTime()
+      }));
+    }
+    async function myStreak(uid) {
+      const rows = await sql`
+        SELECT DISTINCT to_char(ts AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD') AS d
+        FROM journal WHERE user_id = ${uid} ORDER BY d DESC LIMIT 120`;
+      if (!rows.length) return 0;
+      const day = (off) => {
+        const t = new Date(Date.now() + 9 * 3600 * 1000 - off * 86400000);
+        return t.toISOString().slice(0, 10);
+      };
+      let idx = 0, streak = 0;
+      // 오늘 또는 어제부터 이어지는 연속 기록일 수
+      let off = rows[0].d === day(0) ? 0 : rows[0].d === day(1) ? 1 : -1;
+      if (off < 0) return 0;
+      while (idx < rows.length && rows[idx].d === day(off)) { streak++; idx++; off++; }
+      return streak;
+    }
+
     if (req.method === "GET") {
       const watch = await myWatch(user.id);
-      const m = await sql`SELECT content FROM memos WHERE user_id = ${user.id}`;
-      return res.status(200).json({ watch, memo: m.length ? m[0].content : "" });
+      const journal = await myJournal(user.id);
+      const streak = await myStreak(user.id);
+      return res.status(200).json({ watch, journal, streak });
     }
 
     if (req.method !== "POST") return res.status(405).json({ error: "허용되지 않는 요청입니다" });
@@ -37,6 +64,20 @@ export default async function handler(req, res) {
     if (action === "remove") {
       await sql`DELETE FROM watchlist WHERE user_id = ${user.id} AND sym = ${String(sym || "")}`;
       return res.status(200).json({ watch: await myWatch(user.id) });
+    }
+
+    if (action === "journal_add") {
+      const txt = String(content || "").trim().slice(0, 500);
+      if (txt.length < 1) return res.status(400).json({ error: "내용을 입력해 주세요" });
+      const md = ["확신", "관망", "불안", "풀매수"].indexOf(String(req.body.mood || "")) >= 0 ? String(req.body.mood) : null;
+      await sql`INSERT INTO journal (user_id, kind, text, mood) VALUES (${user.id}, 'memo', ${txt}, ${md})`;
+      return res.status(200).json({ journal: await myJournal(user.id), streak: await myStreak(user.id) });
+    }
+
+    if (action === "journal_del") {
+      const jid = Math.floor(Number(req.body.id));
+      if (Number.isFinite(jid)) await sql`DELETE FROM journal WHERE id = ${jid} AND user_id = ${user.id}`;
+      return res.status(200).json({ journal: await myJournal(user.id), streak: await myStreak(user.id) });
     }
 
     if (action === "memo") {
