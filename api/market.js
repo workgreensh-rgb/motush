@@ -74,6 +74,16 @@ export default async function handler(req, res) {
       return res.status(200).json({ journal: await myJournal(user.id), streak: await myStreak(user.id) });
     }
 
+    if (action === "journal_export") {
+      const rows = await sql`
+        SELECT kind, text, mood, stock, side, ts FROM journal
+        WHERE user_id = ${user.id} ORDER BY id ASC LIMIT 2000`;
+      return res.status(200).json({ entries: rows.map((r) => ({
+        kind: r.kind, text: r.text, mood: r.mood || "", stock: r.stock || "",
+        side: r.side || "", ts: new Date(r.ts).getTime()
+      })) });
+    }
+
     if (action === "journal_del") {
       const jid = Math.floor(Number(req.body.id));
       if (Number.isFinite(jid)) await sql`DELETE FROM journal WHERE id = ${jid} AND user_id = ${user.id}`;

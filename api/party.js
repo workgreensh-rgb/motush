@@ -1,6 +1,6 @@
-// 파티: 친구 그룹 (1인 최대 2파티)
-// GET  ?action=list          파티 목록 + 내 소속
-// GET  ?action=detail&id=N   파티 상세 (멤버 포트폴리오·매매 사유 피드) — 멤버만
+// 클랜: 친구 그룹 (1인 최대 2클랜)
+// GET  ?action=list          클랜 목록 + 내 소속
+// GET  ?action=detail&id=N   클랜 상세 (멤버 포트폴리오·매매 사유 피드) — 멤버만
 // POST {action:create|join|leave, ...}
 import { init, sql, authUser } from "./_db.js";
 import { getQuotes, equityOf, stageOf, START_CASH } from "./_kis.js";
@@ -45,22 +45,38 @@ export default async function handler(req, res) {
             (SELECT COUNT(*) FROM party_members m WHERE m.party_id = p.id)::int AS cnt,
             EXISTS(SELECT 1 FROM party_members m WHERE m.party_id = p.id AND m.user_id = ${user.id}) AS mine
           FROM parties p ORDER BY p.id DESC LIMIT 50`;
+        // 클랜별 합산 수익률: (Σ총자산 − 인원×시드) ÷ (인원×시드)
+        const acc = await sql`
+          SELECT m.party_id, a.cash, a.holdings
+          FROM party_members m JOIN accounts a ON a.user_id = m.user_id`;
+        const cache = await getQuotes(false);
+        const agg = {};
+        acc.forEach((r) => {
+          const g = (agg[r.party_id] = agg[r.party_id] || { eq: 0, n: 0 });
+          g.eq += equityOf(r.cash, r.holdings, cache);
+          g.n += 1;
+        });
         return res.status(200).json({
-          parties: rows.map((r) => ({
-            id: r.id, name: r.name, intro: r.intro || "", max: r.max_members,
-            locked: !!r.locked, cnt: r.cnt, mine: !!r.mine
-          })),
+          parties: rows.map((r) => {
+            const g = agg[r.id] || { eq: 0, n: 0 };
+            const seed = g.n * START_CASH;
+            return {
+              id: r.id, name: r.name, intro: r.intro || "", max: r.max_members,
+              locked: !!r.locked, cnt: r.cnt, mine: !!r.mine,
+              equity: g.eq, ret: seed > 0 ? ((g.eq - seed) / seed) * 100 : 0
+            };
+          }),
           my_count: await myPartyCount(user.id)
         });
       }
 
       if (action === "detail") {
         const pid = parseInt(req.query.id, 10);
-        if (!pid) return res.status(400).json({ error: "파티를 찾을 수 없습니다" });
+        if (!pid) return res.status(400).json({ error: "클랜을 찾을 수 없습니다" });
         const isMem = await sql`SELECT 1 FROM party_members WHERE party_id = ${pid} AND user_id = ${user.id}`;
-        if (!isMem.length) return res.status(403).json({ error: "파티 멤버만 볼 수 있습니다" });
+        if (!isMem.length) return res.status(403).json({ error: "클랜 멤버만 볼 수 있습니다" });
         const p = await sql`SELECT id, name, intro, max_members FROM parties WHERE id = ${pid}`;
-        if (!p.length) return res.status(404).json({ error: "파티를 찾을 수 없습니다" });
+        if (!p.length) return res.status(404).json({ error: "클랜을 찾을 수 없습니다" });
 
         const mem = await sql`
           SELECT u.id AS uid, u.username, u.name, a.cash, a.holdings, a.trades, a.trade_count
@@ -126,12 +142,12 @@ export default async function handler(req, res) {
       let mx = parseInt(max, 10);
       if (!Number.isFinite(mx) || mx < 2 || mx > 30) mx = 10;
       if ((await myPartyCount(user.id)) >= MAX_PARTIES_PER_USER)
-        return res.status(400).json({ error: "파티는 최대 " + MAX_PARTIES_PER_USER + "개까지 가입할 수 있습니다" });
+        return res.status(400).json({ error: "클랜은 최대 " + MAX_PARTIES_PER_USER + "개까지 가입할 수 있습니다" });
 
       let ph = null;
       const pw = String(pass || "").trim();
       if (pw) {
-        if (pw.length < 2) return res.status(400).json({ error: "파티 비밀번호는 2자 이상으로 해주세요" });
+        if (pw.length < 2) return res.status(400).json({ error: "클랜 비밀번호는 2자 이상으로 해주세요" });
         const salt = randomBytes(16).toString("hex");
         ph = salt + ":" + scryptSync(pw, salt, 32).toString("hex");
       }
@@ -148,18 +164,18 @@ export default async function handler(req, res) {
         SELECT id, pass_hash, max_members,
           (SELECT COUNT(*) FROM party_members m WHERE m.party_id = parties.id)::int AS cnt
         FROM parties WHERE id = ${pid}`;
-      if (!p.length) return res.status(404).json({ error: "파티를 찾을 수 없습니다" });
+      if (!p.length) return res.status(404).json({ error: "클랜을 찾을 수 없습니다" });
       const already = await sql`SELECT 1 FROM party_members WHERE party_id = ${pid} AND user_id = ${user.id}`;
-      if (already.length) return res.status(400).json({ error: "이미 가입한 파티입니다" });
+      if (already.length) return res.status(400).json({ error: "이미 가입한 클랜입니다" });
       if ((await myPartyCount(user.id)) >= MAX_PARTIES_PER_USER)
-        return res.status(400).json({ error: "파티는 최대 " + MAX_PARTIES_PER_USER + "개까지 가입할 수 있습니다" });
+        return res.status(400).json({ error: "클랜은 최대 " + MAX_PARTIES_PER_USER + "개까지 가입할 수 있습니다" });
       if (p[0].cnt >= p[0].max_members) return res.status(400).json({ error: "정원이 가득 찼습니다" });
       if (p[0].pass_hash) {
         const [salt, hash] = String(p[0].pass_hash).split(":");
         const test = scryptSync(String(pass || ""), salt, 32).toString("hex");
         const ok = hash.length === test.length &&
           timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(test, "hex"));
-        if (!ok) return res.status(401).json({ error: "파티 비밀번호가 올바르지 않습니다" });
+        if (!ok) return res.status(401).json({ error: "클랜 비밀번호가 올바르지 않습니다" });
       }
       await sql`INSERT INTO party_members (party_id, user_id) VALUES (${pid}, ${user.id})`;
       return res.status(200).json({ ok: true, id: pid });
@@ -169,7 +185,7 @@ export default async function handler(req, res) {
       const pid = parseInt(party_id, 10);
       await sql`DELETE FROM party_members WHERE party_id = ${pid} AND user_id = ${user.id}`;
       const left = await sql`SELECT COUNT(*)::int AS c FROM party_members WHERE party_id = ${pid}`;
-      if (left[0].c === 0) await sql`DELETE FROM parties WHERE id = ${pid}`; // 빈 파티는 정리
+      if (left[0].c === 0) await sql`DELETE FROM parties WHERE id = ${pid}`; // 빈 클랜은 정리
       return res.status(200).json({ ok: true });
     }
 
