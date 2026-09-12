@@ -52,14 +52,15 @@ export async function dailyBars(code) {
 export async function investorDaily(code) {
   const d = await kisGet("/uapi/domestic-stock/v1/quotations/inquire-investor", "FHKST01010900",
     { FID_COND_MRKT_DIV_CODE: "J", FID_INPUT_ISCD: code });
-  const rows = d.output || [];
+  const rows = d.output || (Array.isArray(d.output1) ? d.output1 : []) || [];
+  investorDaily.lastRaw = { keys: Object.keys(d), row: rows[0] || null };
   const pick = (r, re) => { for (const k of Object.keys(r)) if (re.test(k)) return Number(r[k]) || 0; return 0; };
-  // 금액 필드 우선, 없으면 수량 × 종가로 근사
-  return rows.map((r) => {
+  // 순매수 금액(원) = 순매수 수량 × 종가 (공식 필드: frgn_ntby_qty / orgn_ntby_qty / stck_clpr)
+  return rows.filter((r) => r && r.stck_bsop_date).map((r) => {
     const close = Number(r.stck_clpr) || 0;
-    let f = pick(r, /frgn.*ntby.*pbmn/), o = pick(r, /orgn.*ntby.*pbmn/);
-    if (!f && !o) { f = pick(r, /frgn.*ntby.*qty/) * close; o = pick(r, /orgn.*ntby.*qty/) * close; }
-    return { date: r.stck_bsop_date, fgn: f, inst: o };
+    const fq = Number(r.frgn_ntby_qty) || pick(r, /frgn.*ntby.*qty/);
+    const oq = Number(r.orgn_ntby_qty) || pick(r, /orgn.*ntby.*qty/);
+    return { date: r.stck_bsop_date, fgn: fq * close, inst: oq * close };
   }).reverse();
 }
 
