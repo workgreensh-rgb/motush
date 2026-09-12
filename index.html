@@ -1478,11 +1478,11 @@ function renderQuant(){
 }
 async function qbBuild(){
   if(QB_RUNNING)return;
-  if(!confirm("전 종목 시총을 수집해 코스피 200 + 코스닥 50 유니버스를 만듭니다. 3~5분 걸립니다. 계속할까요?"))return;
+  if(!confirm("전 종목 시총을 수집해 코스피 200 + 코스닥 50 유니버스를 만듭니다. 2~3분 걸리며, 중간에 멈추면 다시 눌러 이어서 진행됩니다. 계속할까요?"))return;
   QB_RUNNING=true;renderQuant();
   try{
-    for(var i=0;i<120;i++){
-      var r=await api("/api/quant?run=1&build=1"+(i===0?"&reset=1":""));
+    for(var i=0;i<400;i++){
+      var r=await api("/api/quant?run=1&build=1");
       flash("유니버스 구축 "+(r.progress||r.note||""));
       if(r.phase==="done")break;
     }

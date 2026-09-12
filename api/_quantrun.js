@@ -109,19 +109,21 @@ export async function runBot(req, res) {
     if (st.phase === "scan") {
       const held = {};
       (await sql`SELECT sym FROM bot_positions WHERE status = 'open'`).forEach((r) => (held[r.sym] = 1));
+      const PAR = 3;
       while (st.idx < st.universe.length && Date.now() - t0 < RULES.timeBudgetMs) {
-        const u = st.universe[st.idx];
-        try {
-          if (held[u.code]) { st.idx++; continue; }
-          const d = await dailyBars(u.code);
-          await sleep(60);
-          const f = await investorDaily(u.code);
-          await sleep(60);
-          const ev = evaluate(d.bars, f, d.cap);
-          if (ev.pass) st.signals.push({ code: u.code, name: d.name || u.name, ...ev });
-          else st.rejects++;
-        } catch (e) { st.rejects++; if (st.rejects < 5) await log("warn", `${u.code} 조회 실패: ${e.message}`); }
-        st.idx++;
+        const batch = st.universe.slice(st.idx, st.idx + PAR).filter((u) => !held[u.code]);
+        const rs = await Promise.all(batch.map(async (u) => {
+          try {
+            const [d, f] = await Promise.all([dailyBars(u.code), investorDaily(u.code)]);
+            return { u, ev: evaluate(d.bars, f, d.cap), name: d.name || u.name };
+          } catch (e) { return { u, err: e.message }; }
+        }));
+        for (const r of rs) {
+          if (r.err) { st.rejects++; if (st.rejects < 5) await log("warn", `${r.u.code} 조회 실패: ${r.err}`); continue; }
+          if (r.ev.pass) st.signals.push({ code: r.u.code, name: r.name, ...r.ev }); else st.rejects++;
+        }
+        st.idx += PAR;
+        await sleep(320);
       }
       await save();
       if (st.idx < st.universe.length) return res.status(200).json({ phase: "scan", progress: st.idx + "/" + st.universe.length, signals: st.signals.length });
@@ -178,17 +180,19 @@ export async function runBot(req, res) {
 /* ── 유니버스 구축: 마스터 전 종목 시총 수집 → 코스피 200 + 코스닥 50 ── */
 async function buildUniverse(req, res, t0) {
   let st = (await kvGet("qb_build")) || {};
-  if (req.query.reset === "1" || !st.codes) {
+  if (req.query.reset === "1" || !st.codes || st.idx >= st.codes.length) {
     const m = await getMaster();
     const codes = Object.keys(m).filter((c) => isUniverseCandidate(m[c].n)).map((c) => ({ code: c, name: m[c].n, m: m[c].m }));
     st = { codes, idx: 0, caps: {}, started: Date.now() };
     await botLog("info", `유니버스 구축 시작 · 후보 ${codes.length}종목 (마스터 ${Object.keys(m).length})`);
   }
+  const PAR = 6;
   while (st.idx < st.codes.length && Date.now() - t0 < RULES.timeBudgetMs) {
-    const c = st.codes[st.idx];
-    try { const r = await capOf(c.code); if (r.cap > 0 && !r.halt) st.caps[c.code] = r.cap; } catch (e) {}
-    st.idx++;
-    await sleep(55);
+    const batch = st.codes.slice(st.idx, st.idx + PAR);
+    const rs = await Promise.all(batch.map((c) => capOf(c.code).catch(() => null)));
+    rs.forEach((r, i) => { if (r && r.cap > 0 && !r.halt) st.caps[batch[i].code] = r.cap; });
+    st.idx += batch.length;
+    await sleep(320);
   }
   if (st.idx < st.codes.length) { await kvSet("qb_build", st); return res.status(200).json({ phase: "build", progress: st.idx + "/" + st.codes.length }); }
   const rank = (mk, n) => st.codes.filter((c) => c.m === mk && st.caps[c.code]).sort((a, b) => st.caps[b.code] - st.caps[a.code]).slice(0, n)
