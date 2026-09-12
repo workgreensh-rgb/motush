@@ -120,7 +120,9 @@ export async function runBot(req, res) {
         }));
         for (const r of rs) {
           if (r.err) { st.rejects++; if (st.rejects < 5) await log("warn", `${r.u.code} 조회 실패: ${r.err}`); continue; }
-          if (r.ev.pass) st.signals.push({ code: r.u.code, name: r.name, ...r.ev }); else st.rejects++;
+          if (r.ev.pass) st.signals.push({ code: r.u.code, name: r.name, ...r.ev });
+          else { st.rejects++; st.why = st.why || {}; st.why[r.ev.why] = (st.why[r.ev.why] || 0) + 1;
+            if (!st.sample && r.ev.flowSum !== undefined) st.sample = `${r.name} RSI ${Math.round(r.ev.rsiLow)}→${Math.round(r.ev.rsiNow)} 수급5일 ${Math.round(r.ev.flowSum / 1e8)}억 연속 ${r.ev.streak} 거래량 ${r.ev.volRatio.toFixed(1)}배`; }
         }
         st.idx += PAR;
         await sleep(320);
@@ -167,6 +169,8 @@ export async function runBot(req, res) {
       st.phase = "done"; st.note = `신호 ${sigs.length}건 · 매수 ${bought}건`; st.finished = Date.now();
       await save();
       await log("info", `스캔 완료 · ${st.universe.length}종목 · ${st.note}`);
+      if (st.why) await log("info", "탈락 사유 · " + Object.keys(st.why).map((k) => k + " " + st.why[k]).join(" · "));
+      if (st.sample) await log("info", "샘플 · " + st.sample);
       return res.status(200).json({ phase: "done", note: st.note });
     }
     return res.status(200).json({ phase: st.phase });
