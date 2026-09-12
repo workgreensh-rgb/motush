@@ -49,17 +49,19 @@ export async function runBot(req, res) {
 
     /* ── INIT: 휴장 판단 · ON/OFF · 레짐 · 보유 점검(매도) ── */
     if (st.phase === "init") {
+      const force = who === "owner" && req.query && req.query.force === "1";
       const dow = kstNow().getUTCDay();
-      if (dow === 0 || dow === 6) { st.phase = "skip"; st.note = "주말"; await save(); return res.status(200).json({ phase: "skip", note: "주말" }); }
+      if (!force && (dow === 0 || dow === 6)) { st.phase = "skip"; st.note = "주말"; await save(); return res.status(200).json({ phase: "skip", note: "주말" }); }
       const cfg = await botConfig();
       const reg = await kospiRegime();
       const todayYmd = today.replace(/-/g, "");
-      if (reg.lastDate && reg.lastDate !== todayYmd) {
+      if (!force && reg.lastDate && reg.lastDate !== todayYmd) {
         st.phase = "skip"; st.note = "휴장일(지수 최근일 " + reg.lastDate + ")"; await save();
         await log("info", "휴장일로 판단, 스킵 (" + reg.lastDate + ")");
         return res.status(200).json({ phase: "skip", note: st.note });
       }
       st.regime = { ok: reg.ok, last: reg.last, ma: reg.ma, note: reg.note || "" };
+      if (force) await log("warn", "테스트 실행(휴장 무시) — 직전 거래일 종가 기준");
       await log("info", `실행 시작 · 코스피 ${reg.last} / 200일선 ${reg.ma} → ${reg.ok ? "매수 허용" : "신규매수 중단"}${reg.note ? " (" + reg.note + ")" : ""}`);
 
       // 보유 점검 (매도 판단) — ON/OFF와 무관하게 청산 규칙은 항상 적용

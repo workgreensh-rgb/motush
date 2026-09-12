@@ -1439,7 +1439,7 @@ function renderQuant(){
     +'<span style="display:flex;gap:6px;align-items:center">'
     +'<span class="sub" style="font-size:12px;padding:3px 9px;border-radius:6px;background:'+(c.on?"rgba(61,220,132,.15)":"rgba(139,148,171,.15)")+';color:'+(c.on?"#3DDC84":"var(--dim)")+'">'+(c.on?"ON":"OFF")+'</span>'
     +(c.brake?'<span class="sub" style="font-size:12px;padding:3px 9px;border-radius:6px;background:rgba(232,184,75,.15);color:var(--gold)">브레이크</span>':'')
-    +(QB.owner?'<button class="btn g" style="padding:5px 10px;font-size:11px" onclick="qbAct(\'toggle\')">'+(c.on?"끄기":"켜기")+'</button><button class="btn g" style="padding:5px 10px;font-size:11px" onclick="qbAct(\'brake\')">브레이크 '+(c.brake?"해제":"ON")+'</button><button class="btn g" style="padding:5px 10px;font-size:11px" id="qbRunBtn" onclick="qbRunNow()">'+(QB_RUNNING?"실행 중…":"지금 실행")+'</button>':'')
+    +(QB.owner?'<button class="btn g" style="padding:5px 10px;font-size:11px" onclick="qbAct(\'toggle\')">'+(c.on?"끄기":"켜기")+'</button><button class="btn g" style="padding:5px 10px;font-size:11px" onclick="qbAct(\'brake\')">브레이크 '+(c.brake?"해제":"ON")+'</button><button class="btn g" style="padding:5px 10px;font-size:11px" id="qbRunBtn" onclick="qbRunNow(false)">'+(QB_RUNNING?"실행 중…":"지금 실행")+'</button><button class="btn g" style="padding:5px 10px;font-size:11px" onclick="qbRunNow(true)">테스트 실행</button>':'')
     +'</span></div>'
     +'<div class="grid2" style="padding:12px 14px;gap:10px;grid-template-columns:repeat(4,minmax(0,1fr))">'
     +qbStat("보유 슬롯",b.slots+" / "+R.slots)+qbStat("수익률",'<span style="color:'+(b.ret>=0?"var(--up)":"var(--dn)")+'">'+qbPct(b.ret)+'</span>')
@@ -1478,11 +1478,13 @@ function renderQuant(){
 }
 function qbStat(k,v){return '<div style="background:var(--panel2);border-radius:8px;padding:10px 12px"><div class="sub">'+k+'</div><div style="font-size:18px;font-weight:700;margin-top:2px">'+v+'</div></div>';}
 async function qbAct(a){try{await api("/api/quant",{method:"POST",body:{action:a}});await loadQuant();}catch(e){flash(e.message);}}
-async function qbRunNow(){
-  if(QB_RUNNING)return;QB_RUNNING=true;renderQuant();
+async function qbRunNow(force){
+  if(QB_RUNNING)return;
+  if(force&&!confirm("휴장일·주말을 무시하고 직전 거래일 종가로 실제 스캔·체결까지 진행합니다. 계속할까요?"))return;
+  QB_RUNNING=true;renderQuant();
   try{
     for(var i=0;i<40;i++){
-      var r=await api("/api/quant?run=1");
+      var r=await api("/api/quant?run=1"+(force?"&force=1"+(i===0?"&reset=1":""):""));
       if(r.phase==="done"||r.phase==="skip"){flash("실행 "+(r.phase==="done"?"완료":"생략")+(r.note?" · "+r.note:""));break;}
       await loadQuant();
     }
