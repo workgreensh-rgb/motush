@@ -76,8 +76,8 @@ export async function marketCapRanking(mkt) {
 export async function kospiRegime() {
   const closes = [];
   const end = kstNow();
-  for (let i = 0; i < 3 && closes.length < RULES.kospiMA + 5; i++) {
-    const e = new Date(end.getTime() - i * 150 * 86400000), s = new Date(e.getTime() - 150 * 86400000);
+  for (let i = 0; i < 8 && Object.keys(closes.reduce((m, x) => (m[x.d] = 1, m), {})).length < RULES.kospiMA + 5; i++) {
+    const e = new Date(end.getTime() - i * 60 * 86400000), s = new Date(e.getTime() - 60 * 86400000);
     const d = await kisGet("/uapi/domestic-stock/v1/quotations/inquire-daily-indexchartprice", "FHKUP03500100", {
       FID_COND_MRKT_DIV_CODE: "U", FID_INPUT_ISCD: "0001", FID_INPUT_DATE_1: ymd(s), FID_INPUT_DATE_2: ymd(e), FID_PERIOD_DIV_CODE: "D"
     });
@@ -94,23 +94,40 @@ export async function kospiRegime() {
   return { ok: last >= ma, last, ma: Math.round(ma * 100) / 100, n: arr.length, lastDate };
 }
 
-/* ── 유니버스: 시총 상위 (1일 캐시). API가 30건만 주면 universe.json 보조 ── */
+/* ── 유니버스 제외 규칙: ETF·ETN·우선주·스팩·리츠 등 ── */
+const EXCL = /ETF|ETN|KODEX|TIGER|ACE |KBSTAR|RISE |SOL |ARIRANG|HANARO|PLUS |KOSEF|TIMEFOLIO|WON |1Q |KIWOOM|마이티|스팩|리츠|인프라|선물|레버리지|인버스|채권|국고|MMF|액티브|\d+호$/i;
+export function isUniverseCandidate(name) {
+  const n = String(name || "").trim();
+  if (!n) return false;
+  if (EXCL.test(n)) return false;
+  if (/(우|우B|우C|우\(전환\))$/.test(n)) return false; // 우선주
+  if (/\d우$/.test(n)) return false; // 현대차2우
+  return true;
+}
+/* ── 현재가(시총) 단건 ── */
+export async function capOf(code) {
+  const d = await kisGet("/uapi/domestic-stock/v1/quotations/inquire-price", "FHKST01010100", { fid_cond_mrkt_div_code: "J", fid_input_iscd: code });
+  const o = d.output || {};
+  return { cap: Number(o.hts_avls) || 0, price: Number(o.stck_prpr) || 0, halt: o.trht_yn === "Y" };
+}
+
+/* ── 유니버스: 시총 상위 (1일 캐시). API가 30건만 주면 구축본(qb_universe_manual) 우선 ── */
 export async function getUniverse(log) {
   const c = await kvGet("qb_universe");
   if (c && Date.now() - c.ts < 20 * 3600 * 1000 && c.list.length >= 50) return c.list;
   let list = [];
+  const built = await kvGet("qb_universe_manual");
+  if (built && Array.isArray(built.list) && built.list.length >= 100) {
+    if (log) log("info", `구축 유니버스 사용 ${built.list.length}종목 (${built.date || ""})`);
+    await kvSet("qb_universe", { ts: Date.now(), list: built.list });
+    return built.list;
+  }
   try {
     const kp = await marketCapRanking("0001"); await sleep(150);
     const kq = await marketCapRanking("1001");
     list = kp.slice(0, RULES.kospiTop).map((x) => ({ ...x, m: "KOSPI" })).concat(kq.slice(0, RULES.kosdaqTop).map((x) => ({ ...x, m: "KOSDAQ" })));
     if (log) log("info", `시총순위 수신 코스피 ${kp.length} · 코스닥 ${kq.length}`);
   } catch (e) { if (log) log("warn", "시총순위 API 실패: " + e.message); }
-  // 보조: 수동 유니버스(kv 'qb_universe_manual' = [{code,name,m}])
-  const manual = await kvGet("qb_universe_manual");
-  if (Array.isArray(manual) && manual.length) {
-    const seen = {}; list.forEach((x) => (seen[x.code] = 1));
-    manual.forEach((x) => { if (x && /^\d{6}$/.test(x.code) && !seen[x.code]) { list.push({ code: x.code, name: x.name || x.code, cap: 0, m: x.m || "KOSPI" }); seen[x.code] = 1; } });
-  }
   if (list.length) await kvSet("qb_universe", { ts: Date.now(), list });
   else if (c) list = c.list;
   return list;

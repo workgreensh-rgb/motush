@@ -1439,7 +1439,7 @@ function renderQuant(){
     +'<span style="display:flex;gap:6px;align-items:center">'
     +'<span class="sub" style="font-size:12px;padding:3px 9px;border-radius:6px;background:'+(c.on?"rgba(61,220,132,.15)":"rgba(139,148,171,.15)")+';color:'+(c.on?"#3DDC84":"var(--dim)")+'">'+(c.on?"ON":"OFF")+'</span>'
     +(c.brake?'<span class="sub" style="font-size:12px;padding:3px 9px;border-radius:6px;background:rgba(232,184,75,.15);color:var(--gold)">브레이크</span>':'')
-    +(QB.owner?'<button class="btn g" style="padding:5px 10px;font-size:11px" onclick="qbAct(\'toggle\')">'+(c.on?"끄기":"켜기")+'</button><button class="btn g" style="padding:5px 10px;font-size:11px" onclick="qbAct(\'brake\')">브레이크 '+(c.brake?"해제":"ON")+'</button><button class="btn g" style="padding:5px 10px;font-size:11px" id="qbRunBtn" onclick="qbRunNow(false)">'+(QB_RUNNING?"실행 중…":"지금 실행")+'</button><button class="btn g" style="padding:5px 10px;font-size:11px" onclick="qbRunNow(true)">테스트 실행</button>':'')
+    +(QB.owner?'<button class="btn g" style="padding:5px 10px;font-size:11px" onclick="qbAct(\'toggle\')">'+(c.on?"끄기":"켜기")+'</button><button class="btn g" style="padding:5px 10px;font-size:11px" onclick="qbAct(\'brake\')">브레이크 '+(c.brake?"해제":"ON")+'</button><button class="btn g" style="padding:5px 10px;font-size:11px" id="qbRunBtn" onclick="qbRunNow(false)">'+(QB_RUNNING?"실행 중…":"지금 실행")+'</button><button class="btn g" style="padding:5px 10px;font-size:11px" onclick="qbRunNow(true)">테스트 실행</button><button class="btn g" style="padding:5px 10px;font-size:11px" onclick="qbBuild()">유니버스 구축</button>':'')
     +'</span></div>'
     +'<div class="grid2" style="padding:12px 14px;gap:10px;grid-template-columns:repeat(4,minmax(0,1fr))">'
     +qbStat("보유 슬롯",b.slots+" / "+R.slots)+qbStat("수익률",'<span style="color:'+(b.ret>=0?"var(--up)":"var(--dn)")+'">'+qbPct(b.ret)+'</span>')
@@ -1475,6 +1475,19 @@ function renderQuant(){
       h+='<div style="color:'+col+'">'+t+' '+esc(l.msg)+'</div>';});
     h+='</div></div>';}
   el.innerHTML=h;
+}
+async function qbBuild(){
+  if(QB_RUNNING)return;
+  if(!confirm("전 종목 시총을 수집해 코스피 200 + 코스닥 50 유니버스를 만듭니다. 3~5분 걸립니다. 계속할까요?"))return;
+  QB_RUNNING=true;renderQuant();
+  try{
+    for(var i=0;i<120;i++){
+      var r=await api("/api/quant?run=1&build=1"+(i===0?"&reset=1":""));
+      flash("유니버스 구축 "+(r.progress||r.note||""));
+      if(r.phase==="done")break;
+    }
+  }catch(e){flash(e.message);}
+  QB_RUNNING=false;await loadQuant();
 }
 function qbStat(k,v){return '<div style="background:var(--panel2);border-radius:8px;padding:10px 12px"><div class="sub">'+k+'</div><div style="font-size:18px;font-weight:700;margin-top:2px">'+v+'</div></div>';}
 async function qbAct(a){try{await api("/api/quant",{method:"POST",body:{action:a}});await loadQuant();}catch(e){flash(e.message);}}

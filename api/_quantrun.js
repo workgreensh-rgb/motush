@@ -4,7 +4,8 @@ import { init, sql, authUser } from "./_db.js";
 import { kvGet, kvSet, START_CASH, FEE_RATE, equityOf, getQuotes } from "./_kis.js";
 import { executeTrade } from "./_trade.js";
 import { RULES, kstDate, kstNow, dailyBars, investorDaily, kospiRegime, getUniverse, evaluate, scoreAll,
-  buyReason, sellReason, botLog, botConfig } from "./_quant.js";
+  buyReason, sellReason, botLog, botConfig, isUniverseCandidate, capOf } from "./_quant.js";
+import { getMaster } from "./_kis.js";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const BOT_AVATAR = "🤖";
@@ -36,6 +37,7 @@ export async function runBot(req, res) {
     if (!who) return res.status(401).json({ error: "권한이 없습니다" });
 
     const today = kstDate();
+    if (req.query && req.query.build === "1" && who === "owner") return buildUniverse(req, res, t0);
     const bot = await botUser();
     if (!bot) return res.status(500).json({ error: "봇 계정(" + (process.env.BOT_USERNAME || "quantbota") + ")을 찾을 수 없습니다" });
 
@@ -170,4 +172,31 @@ export async function runBot(req, res) {
     await botLog("error", "실행 오류: " + String(e.message || e));
     return res.status(500).json({ error: "봇 실행 오류", detail: String(e.message || e) });
   }
+}
+
+
+/* ── 유니버스 구축: 마스터 전 종목 시총 수집 → 코스피 200 + 코스닥 50 ── */
+async function buildUniverse(req, res, t0) {
+  let st = (await kvGet("qb_build")) || {};
+  if (req.query.reset === "1" || !st.codes) {
+    const m = await getMaster();
+    const codes = Object.keys(m).filter((c) => isUniverseCandidate(m[c].n)).map((c) => ({ code: c, name: m[c].n, m: m[c].m }));
+    st = { codes, idx: 0, caps: {}, started: Date.now() };
+    await botLog("info", `유니버스 구축 시작 · 후보 ${codes.length}종목 (마스터 ${Object.keys(m).length})`);
+  }
+  while (st.idx < st.codes.length && Date.now() - t0 < RULES.timeBudgetMs) {
+    const c = st.codes[st.idx];
+    try { const r = await capOf(c.code); if (r.cap > 0 && !r.halt) st.caps[c.code] = r.cap; } catch (e) {}
+    st.idx++;
+    await sleep(55);
+  }
+  if (st.idx < st.codes.length) { await kvSet("qb_build", st); return res.status(200).json({ phase: "build", progress: st.idx + "/" + st.codes.length }); }
+  const rank = (mk, n) => st.codes.filter((c) => c.m === mk && st.caps[c.code]).sort((a, b) => st.caps[b.code] - st.caps[a.code]).slice(0, n)
+    .map((c) => ({ code: c.code, name: c.name, cap: st.caps[c.code], m: mk }));
+  const list = rank("KOSPI", RULES.kospiTop).concat(rank("KOSDAQ", RULES.kosdaqTop));
+  await kvSet("qb_universe_manual", { date: kstDate(), list });
+  await kvSet("qb_universe", { ts: 0, list: [] });
+  await kvSet("qb_build", {});
+  await botLog("info", `유니버스 구축 완료 · 코스피 ${rank("KOSPI", RULES.kospiTop).length} + 코스닥 ${rank("KOSDAQ", RULES.kosdaqTop).length} = ${list.length}종목`);
+  return res.status(200).json({ phase: "done", note: list.length + "종목" });
 }
