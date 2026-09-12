@@ -119,6 +119,13 @@ export async function init() {
     entry_score NUMERIC, qty INTEGER NOT NULL, days_held INTEGER DEFAULT 0, mfe NUMERIC DEFAULT 0, last_ret NUMERIC DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'open', exit_date TEXT, exit_price BIGINT, exit_kind TEXT, exit_ret NUMERIC
   )`;
+  await sql`CREATE TABLE IF NOT EXISTS flow_daily (
+    run_date TEXT NOT NULL, sym TEXT NOT NULL, name TEXT, market TEXT,
+    cap NUMERIC, price BIGINT, adv20 BIGINT,
+    f1 BIGINT, f5 BIGINT, f20 BIGINT, i1 BIGINT, i5 BIGINT, i20 BIGINT,
+    rsi NUMERIC, k200 BOOLEAN DEFAULT false, short_pct NUMERIC, verdict TEXT,
+    ts TIMESTAMPTZ DEFAULT now(), PRIMARY KEY (run_date, sym)
+  )`;
   ready = true;
 }
 

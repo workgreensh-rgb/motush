@@ -4,7 +4,7 @@ import { init, sql, authUser } from "./_db.js";
 import { kvGet, kvSet, START_CASH, FEE_RATE, equityOf, getQuotes } from "./_kis.js";
 import { executeTrade } from "./_trade.js";
 import { RULES, kstDate, kstNow, dailyBars, investorDaily, kospiRegime, getUniverse, evaluate, scoreAll,
-  buyReason, sellReason, botLog, botConfig, isUniverseCandidate, capOf } from "./_quant.js";
+  buyReason, sellReason, botLog, botConfig, isUniverseCandidate, capOf, shortSalePct, flowMetrics, verdictOf } from "./_quant.js";
 import { getMaster } from "./_kis.js";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -98,7 +98,7 @@ export async function runBot(req, res) {
       if (!cfg.on) { st.phase = "skip"; st.note = "봇 OFF"; await save(); await log("info", "봇 OFF 상태 — 매도 점검만 수행"); return res.status(200).json({ phase: "skip", note: "봇 OFF" }); }
       if (cfg.brake) { st.phase = "skip"; st.note = "이벤트 브레이크"; await save(); await log("info", "이벤트 브레이크 ON — 신규 매수 생략"); return res.status(200).json({ phase: "skip", note: "이벤트 브레이크" }); }
 
-      st.universe = (await getUniverse(log)).map((u) => ({ code: u.code, name: u.name, m: u.m }));
+      st.universe = (await getUniverse(log)).map((u) => ({ code: u.code, name: u.name, m: u.m, k200: !!u.k200 }));
       if (!st.universe.length) { st.phase = "skip"; st.note = "유니버스 비어있음"; await save(); await log("error", "유니버스 0종목 — 시총순위 API 확인 필요"); return res.status(200).json({ phase: "skip", note: st.note }); }
       await log("info", `유니버스 ${st.universe.length}종목 · 스캔 시작`);
       st.phase = "scan"; st.idx = 0; st.signals = []; st.rejects = 0;
@@ -111,14 +111,25 @@ export async function runBot(req, res) {
       (await sql`SELECT sym FROM bot_positions WHERE status = 'open'`).forEach((r) => (held[r.sym] = 1));
       const PAR = 3;
       while (st.idx < st.universe.length && Date.now() - t0 < RULES.timeBudgetMs) {
-        const batch = st.universe.slice(st.idx, st.idx + PAR).filter((u) => !held[u.code]);
+        const batch = st.universe.slice(st.idx, st.idx + PAR);
         const rs = await Promise.all(batch.map(async (u) => {
           try {
-            const [d, f] = await Promise.all([dailyBars(u.code), investorDaily(u.code)]);
+            const [d, f, sp] = await Promise.all([dailyBars(u.code), investorDaily(u.code), shortSalePct(u.code).catch(() => null)]);
+            const m = flowMetrics(d.bars, f, d.cap);
+            if (m) {
+              const v = verdictOf(m);
+              await sql`INSERT INTO flow_daily (run_date, sym, name, market, cap, price, adv20, f1, f5, f20, i1, i5, i20, rsi, k200, short_pct, verdict)
+                VALUES (${today}, ${u.code}, ${d.name || u.name}, ${u.m || null}, ${m.cap}, ${m.price}, ${m.adv20}, ${m.f1}, ${m.f5}, ${m.f20}, ${m.i1}, ${m.i5}, ${m.i20}, ${m.rsi}, ${!!u.k200}, ${sp === null ? null : Math.round(sp * 100) / 100}, ${v})
+                ON CONFLICT (run_date, sym) DO UPDATE SET cap = EXCLUDED.cap, price = EXCLUDED.price, adv20 = EXCLUDED.adv20, f1 = EXCLUDED.f1, f5 = EXCLUDED.f5, f20 = EXCLUDED.f20,
+                  i1 = EXCLUDED.i1, i5 = EXCLUDED.i5, i20 = EXCLUDED.i20, rsi = EXCLUDED.rsi, k200 = EXCLUDED.k200, short_pct = EXCLUDED.short_pct, verdict = EXCLUDED.verdict, ts = now()`;
+            }
+            if (held[u.code]) return { u, held: true };
             return { u, ev: evaluate(d.bars, f, d.cap), name: d.name || u.name };
           } catch (e) { return { u, err: e.message }; }
         }));
+        if (!st.shortLogged) { st.shortLogged = true; await log("info", "공매도API 원본 · " + JSON.stringify(shortSalePct.lastRaw).slice(0, 400)); }
         for (const r of rs) {
+          if (r.held) continue;
           if (r.err) { st.rejects++; if (st.rejects < 5) await log("warn", `${r.u.code} 조회 실패: ${r.err}`); continue; }
           if (r.ev.pass) st.signals.push({ code: r.u.code, name: r.name, ...r.ev });
           else { st.rejects++; st.why = st.why || {}; st.why[r.ev.why] = (st.why[r.ev.why] || 0) + 1;
@@ -194,13 +205,13 @@ async function buildUniverse(req, res, t0) {
   while (st.idx < st.codes.length && Date.now() - t0 < RULES.timeBudgetMs) {
     const batch = st.codes.slice(st.idx, st.idx + PAR);
     const rs = await Promise.all(batch.map((c) => capOf(c.code).catch(() => null)));
-    rs.forEach((r, i) => { if (r && r.cap > 0 && !r.halt) st.caps[batch[i].code] = r.cap; });
+    rs.forEach((r, i) => { if (r && r.cap > 0 && !r.halt) { st.caps[batch[i].code] = r.cap; st.k200 = st.k200 || {}; if (r.k200) st.k200[batch[i].code] = true; } });
     st.idx += batch.length;
     await sleep(320);
   }
   if (st.idx < st.codes.length) { await kvSet("qb_build", st); return res.status(200).json({ phase: "build", progress: st.idx + "/" + st.codes.length }); }
   const rank = (mk, n) => st.codes.filter((c) => c.m === mk && st.caps[c.code]).sort((a, b) => st.caps[b.code] - st.caps[a.code]).slice(0, n)
-    .map((c) => ({ code: c.code, name: c.name, cap: st.caps[c.code], m: mk }));
+    .map((c) => ({ code: c.code, name: c.name, cap: st.caps[c.code], m: mk, k200: !!(st.k200 && st.k200[c.code]) }));
   const list = rank("KOSPI", RULES.kospiTop).concat(rank("KOSDAQ", RULES.kosdaqTop));
   await kvSet("qb_universe_manual", { date: kstDate(), list });
   await kvSet("qb_universe", { ts: 0, list: [] });

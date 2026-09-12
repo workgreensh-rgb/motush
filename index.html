@@ -183,6 +183,7 @@ border-radius:99px;padding:4px 11px;font-size:11px;font-weight:700;cursor:pointe
       <button class="tab" data-tab="market" onclick="setTab('market')">스터디</button>
       <button class="tab" data-tab="rank" onclick="setTab('rank')">랭킹</button>
       <button class="tab" data-tab="party" onclick="setTab('party')">클랜</button>
+      <button class="tab" data-tab="flow" onclick="setTab('flow')">수급</button>
       <button class="tab" data-tab="port" onclick="setTab('port')">내 계좌</button>
       <button class="tab" data-tab="quant" onclick="setTab('quant')">자동매매</button>
       <button class="tab" style="max-width:44px;font-size:15px" onclick="openSearch('trade')">🔍</button>
@@ -271,6 +272,7 @@ border-radius:99px;padding:4px 11px;font-size:11px;font-weight:700;cursor:pointe
   <div id="partyTab" class="hidden"></div>
   <div id="portTab" class="hidden"></div>
   <div id="quantTab" class="hidden"></div>
+  <div id="flowTab" class="hidden"></div>
 </div>
 
 <div class="visitors num"><span class="dot"></span>동시접속 <b id="vAll">-</b> · 선수 <b id="vPl">-</b> · Total <b id="vTot">-</b></div>
@@ -606,11 +608,12 @@ function setTab(t){
   if(t==="port"&&!me){needLogin();return;}
   curTab=t;
   document.querySelectorAll(".tab").forEach(function(b){b.classList.toggle("on",b.dataset.tab===t);});
-  ["home","market","rank","party","port","quant"].forEach(function(k){
+  ["home","market","rank","party","port","quant","flow"].forEach(function(k){
     document.getElementById(k+"Tab").classList.toggle("hidden",k!==t);
   });
   if(t==="rank")loadRank();
   if(t==="quant")loadQuant();
+  if(t==="flow")loadFlow();
   if(t==="home"){loadFeed();loadCoins();loadKw();}
   if(t==="market"){if(me){loadMarket();if(!PARTIES)loadParties();}}
   if(t==="party"){if(me)loadParties();}
@@ -1503,6 +1506,112 @@ async function qbRunNow(force){
     }
   }catch(e){flash(e.message);}
   QB_RUNNING=false;await loadQuant();
+}
+
+/* ───────── 수급 탭 ───────── */
+var FLOW=null, FLOW_WHO="sum", FLOW_SORT={k:"n5",d:-1}, FLOW_LIMIT=30;
+async function loadFlow(){
+  try{FLOW=await api("/api/quant?flow=1");renderFlow();}catch(e){document.getElementById("flowTab").innerHTML='<div class="card mt12"><div class="row"><span class="sub">'+esc(e.message)+'</span></div></div>';}
+}
+function flEok(v){var e=v/1e8;var a=Math.abs(e);var s=a>=10000?(a/10000).toFixed(1)+"조":Math.round(a).toLocaleString("ko-KR")+"억";return (e<0?"−":"+")+s;}
+function flCap(v){return v>=10000?(v/10000).toFixed(1)+"조":Math.round(v).toLocaleString("ko-KR")+"억";}
+function flRows(){
+  if(!FLOW)return [];
+  return FLOW.rows.map(function(r){
+    var n1,n5,n20;
+    if(FLOW_WHO==="fgn"){n1=r.f1;n5=r.f5;n20=r.f20;}else if(FLOW_WHO==="inst"){n1=r.i1;n5=r.i5;n20=r.i20;}else{n1=r.f1+r.i1;n5=r.f5+r.i5;n20=r.f20+r.i20;}
+    var capW=r.cap*1e8;
+    return Object.assign({},r,{n1:n1,n5:n5,n20:n20,r20:capW>0?n20/capW*100:0,r5:capW>0?n5/capW*100:0,adv5:r.adv20>0?n5/r.adv20:0});
+  });
+}
+function flColor(k,v){
+  if(v===null||v===undefined)return "";
+  var g="background:rgba(61,220,132,.18);color:#3DDC84",w="background:rgba(232,184,75,.18);color:var(--gold)",b="background:rgba(240,66,77,.18);color:var(--up)";
+  if(k==="r20"){if(v>=1)return g;if(v<=-1)return b;if(v<=-0.3)return w;return "";}
+  if(k==="adv5"){if(v>=1)return g;if(v<=-1)return b;if(v<=-0.3)return w;return "";}
+  if(k==="adv20"){return v<100e8?b:"";}
+  if(k==="short"){if(v>=5)return b;if(v>=2)return w;return "";}
+  if(k==="rsi"){if(v<=35)return g;if(v>=70)return w;return "";}
+  return "";
+}
+function flCell(k,v,txt){var c=flColor(k,v);return c?'<span style="'+c+';padding:2px 6px;border-radius:4px">'+txt+'</span>':txt;}
+var FL_VCOL={"과매도 + 수급 유입":"#B48CF2","계속 담는 중":"#3DDC84","담는 중 · 과열":"#E8B84B","빼다가 다시 담기":"#5AC8D8","찼다가 빼는 중":"#F2A65A","계속 비우는 중":"#F0424D"};
+function flVerdict(r){
+  var s5=r.n5,s20=r.n20,rs=r.rsi;
+  if(rs!==null&&rs<=35&&s5>0)return "과매도 + 수급 유입";
+  if(s20>0&&s5>0)return rs!==null&&rs>=70?"담는 중 · 과열":"계속 담는 중";
+  if(s20<=0&&s5>0)return "빼다가 다시 담기";
+  if(s20>0&&s5<=0)return "찼다가 빼는 중";
+  return "계속 비우는 중";
+}
+function flSort(k){if(FLOW_SORT.k===k)FLOW_SORT.d*=-1;else{FLOW_SORT={k:k,d:(k==="name"?1:-1)};}FLOW_LIMIT=30;renderFlow();}
+function flWho(w){FLOW_WHO=w;renderFlow();}
+function flMore(){FLOW_LIMIT+=50;renderFlow();}
+function renderFlow(){
+  var el=document.getElementById("flowTab");
+  if(!FLOW||!FLOW.rows.length){el.innerHTML='<div class="card mt12"><div class="row"><span class="sub">아직 수급 데이터가 없습니다. 평일 16:30 자동 스캔 후 표시됩니다.</span></div></div>';return;}
+  var rows=flRows();rows.forEach(function(r){r.v=flVerdict(r);});
+  var whoName={sum:"외국인+기관",fgn:"외국인",inst:"기관"}[FLOW_WHO];
+  var h='';
+  /* ── 지도 ── */
+  var W=720,H=300,PL=44,PR=16,PT=18,PB=34;
+  var xs=rows.map(function(r){return Math.abs(r.r20);}).sort(function(a,b){return a-b;});
+  var ys=rows.map(function(r){return Math.abs(r.r5);}).sort(function(a,b){return a-b;});
+  var xm=Math.max(0.2,xs[Math.floor(xs.length*0.95)]||1),ym=Math.max(0.1,ys[Math.floor(ys.length*0.95)]||1);
+  var caps=rows.map(function(r){return r.cap;});var cmax=Math.max.apply(null,caps)||1;
+  var X=function(v){var t=Math.max(-1,Math.min(1,v/xm));return PL+(t+1)/2*(W-PL-PR);};
+  var Y=function(v){var t=Math.max(-1,Math.min(1,v/ym));return PT+(1-(t+1)/2)*(H-PT-PB);};
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;display:block">';
+  svg+='<line x1="'+X(0)+'" y1="'+PT+'" x2="'+X(0)+'" y2="'+(H-PB)+'" stroke="var(--line)"/><line x1="'+PL+'" y1="'+Y(0)+'" x2="'+(W-PR)+'" y2="'+Y(0)+'" stroke="var(--line)"/>';
+  svg+='<text x="'+(W-PR)+'" y="'+(PT+12)+'" font-size="11" fill="var(--dim)" text-anchor="end">계속 담는 중</text><text x="'+PL+'" y="'+(PT+12)+'" font-size="11" fill="var(--dim)">빼다가 다시 담기</text>';
+  svg+='<text x="'+(W-PR)+'" y="'+(H-PB-6)+'" font-size="11" fill="var(--dim)" text-anchor="end">찼다가 빼는 중</text><text x="'+PL+'" y="'+(H-PB-6)+'" font-size="11" fill="var(--dim)">계속 비우는 중</text>';
+  svg+='<text x="'+(PL+(W-PL-PR)/2)+'" y="'+(H-8)+'" font-size="11" fill="var(--dim)" text-anchor="middle">20일 누적 순매수 ÷ 시총 (%) · ±'+xm.toFixed(1)+'%</text>';
+  svg+='<text x="12" y="'+(PT+(H-PT-PB)/2)+'" font-size="11" fill="var(--dim)" text-anchor="middle" transform="rotate(-90 12 '+(PT+(H-PT-PB)/2)+')">5일 ÷ 시총 (%)</text>';
+  var sorted=rows.slice().sort(function(a,b){return a.cap-b.cap;});
+  sorted.forEach(function(r){
+    var col=FL_VCOL[r.v]||"#8B94AB";var rad=3+7*Math.sqrt(r.cap/cmax);
+    svg+='<circle cx="'+X(r.r20).toFixed(1)+'" cy="'+Y(r.r5).toFixed(1)+'" r="'+rad.toFixed(1)+'" fill="'+col+'" fill-opacity=".75" style="cursor:pointer" onclick="openTrade(\''+r.sym+'\')"><title>'+esc(r.name)+' · 20일/시총 '+r.r20.toFixed(2)+'% · 5일/시총 '+r.r5.toFixed(2)+'% · '+esc(r.v)+'</title></circle>';
+  });
+  var lab=rows.slice().sort(function(a,b){return (Math.abs(b.r20)+Math.abs(b.r5))-(Math.abs(a.r20)+Math.abs(a.r5));}).slice(0,10);
+  lab.forEach(function(r){svg+='<text x="'+(X(r.r20)+6).toFixed(1)+'" y="'+(Y(r.r5)-6).toFixed(1)+'" font-size="10.5" fill="var(--tx)">'+esc(r.name)+'</text>';});
+  svg+='</svg>';
+  h+='<div class="card mt12"><div class="chead"><span class="t">수급 지도 · 찬집 / 빈집</span><span class="s">'+whoName+' · '+rows.length+'종목 · '+esc(FLOW.date)+' 기준</span></div>';
+  h+='<div style="padding:10px 14px 4px"><div class="sub" style="margin-bottom:6px">가로 = 20일 누적 순매수 ÷ 시총 (얼마나 찼나) · 세로 = 5일 누적 ÷ 시총 (지금 담나 비우나) · 점 크기 = 시총 · 색 = 판정 · 점 클릭 → 주문</div>'+svg+'</div></div>';
+  /* ── 표 ── */
+  var k=FLOW_SORT.k,d=FLOW_SORT.d;
+  rows.sort(function(a,b){var x=a[k],y=b[k];if(k==="name")return d*String(x).localeCompare(String(y),"ko");if(x===null||x===undefined)x=-1e18;if(y===null||y===undefined)y=-1e18;return d*(y-x);});
+  var cols=[["name","종목"],["cap","시총"],["n1","1일"],["n5","5일"],["n20","20일"],["r20","20일/시총"],["adv20","20일 ADV"],["adv5","5일/ADV"],["k200","K200"],["short_pct","공매도%"],["rsi","RSI"],["v","판정"]];
+  h+='<div class="card mt12"><div class="chead"><span class="t">수급 랭킹</span><span style="display:flex;gap:4px;align-items:center">';
+  [["sum","합산"],["fgn","외국인"],["inst","기관"]].forEach(function(w){h+='<button class="ct'+(FLOW_WHO===w[0]?" on":"")+'" onclick="flWho(\''+w[0]+'\')">'+w[1]+'</button>';});
+  h+='</span></div><div style="overflow-x:auto"><table style="width:100%;min-width:820px;border-collapse:collapse;font-size:12.5px;white-space:nowrap"><tr class="sub" style="font-size:11px">';
+  cols.forEach(function(c){var on=c[0]===k;h+='<td style="padding:8px 6px;cursor:pointer;'+(on?"color:var(--gold)":"")+(c[0]==="v"?";text-align:right;padding-right:14px":"")+'" onclick="flSort(\''+c[0]+'\')">'+c[1]+(on?(d<0?" ▼":" ▲"):"")+'</td>';});
+  h+='</tr>';
+  rows.slice(0,FLOW_LIMIT).forEach(function(r){
+    var pc=function(v){return v>=0?"color:var(--up)":"color:var(--dn)";};
+    h+='<tr style="border-top:1px solid var(--line)"><td style="padding:8px 6px"><b class="click" style="cursor:pointer" onclick="openTrade(\''+r.sym+'\')">'+esc(r.name)+'</b></td>'
+      +'<td>'+flCap(r.cap)+'</td><td style="'+pc(r.n1)+'">'+flEok(r.n1)+'</td><td style="'+pc(r.n5)+'">'+flEok(r.n5)+'</td><td style="'+pc(r.n20)+'">'+flEok(r.n20)+'</td>'
+      +'<td>'+flCell("r20",r.r20,(r.r20>=0?"+":"")+r.r20.toFixed(2)+"%")+'</td>'
+      +'<td>'+flCell("adv20",r.adv20,Math.round(r.adv20/1e8).toLocaleString("ko-KR")+"억")+'</td>'
+      +'<td>'+flCell("adv5",r.adv5,(r.adv5>=0?"+":"")+r.adv5.toFixed(1)+"배")+'</td>'
+      +'<td>'+(r.k200?"○":"—")+'</td>'
+      +'<td>'+(r.short_pct===null?'<span class="sub">—</span>':flCell("short",r.short_pct,r.short_pct.toFixed(1)))+'</td>'
+      +'<td>'+(r.rsi===null?'<span class="sub">—</span>':flCell("rsi",r.rsi,Math.round(r.rsi)))+'</td>'
+      +'<td style="text-align:right;padding-right:14px"><span style="background:'+(FL_VCOL[r.v]||"#8B94AB")+'22;color:'+(FL_VCOL[r.v]||"#8B94AB")+';padding:2px 8px;border-radius:6px;font-size:11.5px">'+esc(r.v)+'</span></td></tr>';
+  });
+  h+='</table></div>';
+  if(rows.length>FLOW_LIMIT)h+='<div class="row"><button class="btn g" style="width:100%" onclick="flMore()">더 보기 ('+FLOW_LIMIT+' / '+rows.length+')</button></div>';
+  h+='</div>';
+  /* ── 설명 ── */
+  var ex=[["20일/시총","한 달간 큰손이 지분의 몇 %를 담았나. 금액 대신 비율로 봐야 종목끼리 비교됨.","+1%↑ 강한 매집 · −0.3~−1% 이탈 · −1%↓ 강한 이탈"],
+    ["5일/ADV","최근 5일 순매수가 평소 하루치 거래대금의 몇 배인가. 주가에 실제로 힘이 실렸는지.","+1배↑ 물량 충격 · ±0.3배 안은 노이즈 · −1배↓ 대량 매도"],
+    ["20일 ADV","평소 하루 거래대금. 좋고 나쁨 없음, 분모용.","100억 미만이면 수급 수치 신뢰 금지"],
+    ["K200","코스피200 편입 여부. ○면 수급 일부가 인덱스 ETF·연기금의 기계적 매매.","큰손이 판단해서 샀다는 해석을 약하게"],
+    ["공매도%","오늘 거래 중 하락 베팅 비중.","2~5% 주의 · 5%↑+유출 = 나쁨 · 5%↑+유입+반등 = 숏커버링 후보"],
+    ["RSI","최근 2주 온도. 방향이 아니라 과열/과매도.","35↓+수급 유입 = 봇 후보 · 70↑ 추가 매수 부담"]];
+  h+='<div class="card mt12"><div class="chead"><span class="t">지표 읽는 법</span><span class="s">기준선은 경험칙 · 초록=매수 유리 · 노랑=주의 · 빨강=피할 것</span></div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;padding:12px 14px">';
+  ex.forEach(function(e){h+='<div style="background:var(--panel2);border-radius:8px;padding:10px 12px;font-size:12.5px;line-height:1.55"><b>'+e[0]+'</b><div class="sub" style="font-size:12px;margin-top:3px">'+e[1]+'</div><div style="margin-top:4px;font-size:12px">'+e[2]+'</div></div>';});
+  h+='</div><div class="sub" style="padding:0 14px 12px;font-size:12px">매수 관점 좋은 조합: <b style="color:var(--tx)">20일/시총 +1%↑ · 5일/ADV +1배↑ · RSI 35~55 · 공매도 2% 미만</b> — 피할 조합: 20일/시총 −1%↓ · 5일/ADV −1배↓ · 공매도 5%↑</div></div>';
+  el.innerHTML=h;
 }
 
 </script>

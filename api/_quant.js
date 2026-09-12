@@ -109,7 +109,8 @@ export function isUniverseCandidate(name) {
 export async function capOf(code) {
   const d = await kisGet("/uapi/domestic-stock/v1/quotations/inquire-price", "FHKST01010100", { fid_cond_mrkt_div_code: "J", fid_input_iscd: code });
   const o = d.output || {};
-  return { cap: Number(o.hts_avls) || 0, price: Number(o.stck_prpr) || 0, halt: o.trht_yn === "Y" };
+  return { cap: Number(o.hts_avls) || 0, price: Number(o.stck_prpr) || 0, halt: o.trht_yn === "Y",
+    k200: String(o.rprs_mrkt_kor_name || "").toUpperCase().indexOf("KOSPI200") >= 0 };
 }
 
 /* ── 유니버스: 시총 상위 (1일 캐시). API가 30건만 주면 구축본(qb_universe_manual) 우선 ── */
@@ -206,4 +207,49 @@ export async function botLog(level, msg) {
 export async function botConfig() {
   const c = (await kvGet("qb_config")) || {};
   return { on: c.on !== false, brake: !!c.brake, ...c };
+}
+
+
+/* ── 공매도 일별추이 (당일 공매도 대금 비중 %) — 응답 필드 검증 필요 ── */
+export async function shortSalePct(code) {
+  const end = kstNow(), start = new Date(end.getTime() - 14 * 86400000);
+  const d = await kisGet("/uapi/domestic-stock/v1/quotations/daily-short-sale", "FHPST04830000", {
+    FID_COND_MRKT_DIV_CODE: "J", FID_INPUT_ISCD: code, FID_INPUT_DATE_1: ymd(start), FID_INPUT_DATE_2: ymd(end)
+  });
+  const rows = d.output2 || d.output || [];
+  const r = rows[0];
+  shortSalePct.lastRaw = r || null;
+  if (!r) return null;
+  const pick = (re) => { for (const k of Object.keys(r)) if (re.test(k)) { const v = Number(r[k]); if (Number.isFinite(v)) return v; } return null; };
+  // 우선순위: 비중 필드 → 공매도대금/전체대금 → 공매도수량/전체수량
+  const rate = pick(/ssts.*(rate|rt|wght)|shrt.*(rate|rt)/i);
+  if (rate !== null && rate >= 0 && rate <= 100) return rate;
+  const sp = pick(/ssts.*pbmn/i), tp = pick(/acml_tr_pbmn|tot.*pbmn/i);
+  if (sp !== null && tp) return (sp / tp) * 100;
+  const sq = pick(/ssts.*qty/i), tq = pick(/acml_vol|tot.*vol|cntg_vol/i);
+  if (sq !== null && tq) return (sq / tq) * 100;
+  return null;
+}
+
+/* ── 수급 탭용 지표 ── */
+export function flowMetrics(bars, flows, cap) {
+  const n = bars.length - 1;
+  if (n < 20) return null;
+  const closes = bars.map((b) => b.close);
+  const rsi = rsiSeries(closes, RULES.rsiPeriod);
+  const adv20 = Math.round(bars.slice(n - 19, n + 1).reduce((a, b) => a + b.tv, 0) / 20);
+  const sum = (arr, k, d) => Math.round(arr.slice(-d).reduce((a, x) => a + x[k], 0));
+  return {
+    price: closes[n], adv20, rsi: rsi[n] === null ? null : Math.round(rsi[n] * 10) / 10,
+    f1: sum(flows, "fgn", 1), f5: sum(flows, "fgn", 5), f20: sum(flows, "fgn", 20),
+    i1: sum(flows, "inst", 1), i5: sum(flows, "inst", 5), i20: sum(flows, "inst", 20), cap
+  };
+}
+export function verdictOf(m) {
+  const s5 = m.f5 + m.i5, s20 = m.f20 + m.i20, r = m.rsi;
+  if (r !== null && r <= RULES.rsiOversold && s5 > 0) return "과매도 + 수급 유입";
+  if (s20 > 0 && s5 > 0) return r !== null && r >= 70 ? "담는 중 · 과열" : "계속 담는 중";
+  if (s20 <= 0 && s5 > 0) return "빼다가 다시 담기";
+  if (s20 > 0 && s5 <= 0) return "찼다가 빼는 중";
+  return "계속 비우는 중";
 }

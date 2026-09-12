@@ -14,6 +14,17 @@ export default async function handler(req, res) {
     const user = await authUser(req);
     const owner = !!(user && isOwner(user));
 
+    if (req.method === "GET" && req.query && req.query.flow === "1") {
+      const last = (await sql`SELECT run_date FROM flow_daily ORDER BY run_date DESC LIMIT 1`)[0];
+      if (!last) return res.status(200).json({ date: null, rows: [] });
+      const rows = await sql`SELECT sym, name, market, cap, price, adv20, f1, f5, f20, i1, i5, i20, rsi, k200, short_pct, verdict FROM flow_daily WHERE run_date = ${last.run_date}`;
+      return res.status(200).json({ date: last.run_date, rows: rows.map((r) => ({
+        sym: r.sym, name: r.name, market: r.market, cap: Number(r.cap), price: Number(r.price), adv20: Number(r.adv20),
+        f1: Number(r.f1), f5: Number(r.f5), f20: Number(r.f20), i1: Number(r.i1), i5: Number(r.i5), i20: Number(r.i20),
+        rsi: r.rsi === null ? null : Number(r.rsi), k200: !!r.k200, short_pct: r.short_pct === null ? null : Number(r.short_pct), verdict: r.verdict
+      })) });
+    }
+
     if (req.method === "GET") {
       const cfg = await botConfig();
       const run = (await kvGet("qb_run")) || {};
