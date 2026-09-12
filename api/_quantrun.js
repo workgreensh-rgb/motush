@@ -118,10 +118,6 @@ export async function runBot(req, res) {
             return { u, ev: evaluate(d.bars, f, d.cap), name: d.name || u.name };
           } catch (e) { return { u, err: e.message }; }
         }));
-        if (!st.invLogged && investorDaily.lastRaw) {
-          st.invLogged = true;
-          await log("info", "투자자API 원본 · 최상위키 " + JSON.stringify(investorDaily.lastRaw.keys) + " · 행 " + JSON.stringify(investorDaily.lastRaw.row).slice(0, 380));
-        }
         for (const r of rs) {
           if (r.err) { st.rejects++; if (st.rejects < 5) await log("warn", `${r.u.code} 조회 실패: ${r.err}`); continue; }
           if (r.ev.pass) st.signals.push({ code: r.u.code, name: r.name, ...r.ev });
