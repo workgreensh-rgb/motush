@@ -1,0 +1,5 @@
+{
+  "crons": [
+    { "path": "/api/cron/quantbot", "schedule": "40 6 * * 1-5" }
+  ]
+}

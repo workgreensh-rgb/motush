@@ -90,7 +90,7 @@ export async function getCoins() {
 }
 
 /* ── 토큰 ── */
-async function getToken() {
+export async function getToken() {
   const saved = await kvGet("kis_token");
   const now = Date.now();
   if (saved && saved.exp - now > 10 * 60 * 1000) return saved.token;

@@ -181,6 +181,7 @@ border-radius:99px;padding:4px 11px;font-size:11px;font-weight:700;cursor:pointe
       <button class="tab" data-tab="rank" onclick="setTab('rank')">랭킹</button>
       <button class="tab" data-tab="party" onclick="setTab('party')">클랜</button>
       <button class="tab" data-tab="port" onclick="setTab('port')">내 계좌</button>
+      <button class="tab" data-tab="quant" onclick="setTab('quant')">자동매매</button>
       <button class="tab" style="max-width:44px;font-size:15px" onclick="openSearch('trade')">🔍</button>
     </div>
   </div>
@@ -266,6 +267,7 @@ border-radius:99px;padding:4px 11px;font-size:11px;font-weight:700;cursor:pointe
   <div id="rankTab" class="hidden"></div>
   <div id="partyTab" class="hidden"></div>
   <div id="portTab" class="hidden"></div>
+  <div id="quantTab" class="hidden"></div>
 </div>
 
 <div class="visitors num"><span class="dot"></span>동시접속 <b id="vAll">-</b> · 선수 <b id="vPl">-</b> · Total <b id="vTot">-</b></div>
@@ -601,10 +603,11 @@ function setTab(t){
   if(t==="port"&&!me){needLogin();return;}
   curTab=t;
   document.querySelectorAll(".tab").forEach(function(b){b.classList.toggle("on",b.dataset.tab===t);});
-  ["home","market","rank","party","port"].forEach(function(k){
+  ["home","market","rank","party","port","quant"].forEach(function(k){
     document.getElementById(k+"Tab").classList.toggle("hidden",k!==t);
   });
   if(t==="rank")loadRank();
+  if(t==="quant")loadQuant();
   if(t==="home"){loadFeed();loadCoins();loadKw();}
   if(t==="market"){if(me){loadMarket();if(!PARTIES)loadParties();}}
   if(t==="party"){if(me)loadParties();}
@@ -1415,6 +1418,74 @@ setInterval(function(){if(curTab==="home")loadKw();},600000);
     try{await enterApp();}catch(e){setToken(null);}
   }
 })();
+
+/* ───────── 자동매매 (퀀트봇A) ───────── */
+var QB=null, QB_RUNNING=false;
+async function loadQuant(){
+  try{QB=await api("/api/quant");renderQuant();}catch(e){document.getElementById("quantTab").innerHTML='<div class="card mt12"><div class="row"><span class="sub">'+esc(e.message)+'</span></div></div>';}
+}
+function qbEok(v){var e=v/1e8;return (e>=0?"+":"")+Math.round(e).toLocaleString("ko-KR")+"억";}
+function qbCap(v){return v>=10000?(v/10000).toFixed(1)+"조":Math.round(v).toLocaleString("ko-KR")+"억";}
+function qbPct(v){return (v>=0?"+":"")+Number(v).toFixed(1)+"%";}
+function renderQuant(){
+  var el=document.getElementById("quantTab");if(!QB){el.innerHTML="";return;}
+  var R=QB.rules,c=QB.config,r=QB.run,b=QB.bot;
+  var phaseKo={init:"준비",scan:"스캔 중 "+r.progress,exec:"체결 중",done:"완료",skip:"생략 · "+r.note};
+  var reg=r.regime?("코스피 "+Math.round(r.regime.last).toLocaleString("ko-KR")+" / 200일선 "+Math.round(r.regime.ma).toLocaleString("ko-KR")+(r.regime.ok?" · 매수 허용":" · 신규매수 중단")):"미확인";
+  var h='<div class="card mt12"><div class="chead"><span class="t">🤖 '+esc(b.name)+' <span class="s">RSI('+R.rsiPeriod+')+수급 v1 · 손절 '+R.stopLoss+'% / 익절 +'+R.takeProfit+'% / '+R.maxHoldDays+'일 청산</span></span>'
+    +'<span style="display:flex;gap:6px;align-items:center">'
+    +'<span class="sub" style="font-size:12px;padding:3px 9px;border-radius:6px;background:'+(c.on?"rgba(61,220,132,.15)":"rgba(139,148,171,.15)")+';color:'+(c.on?"#3DDC84":"var(--dim)")+'">'+(c.on?"ON":"OFF")+'</span>'
+    +(c.brake?'<span class="sub" style="font-size:12px;padding:3px 9px;border-radius:6px;background:rgba(232,184,75,.15);color:var(--gold)">브레이크</span>':'')
+    +(QB.owner?'<button class="btn g" style="padding:5px 10px;font-size:11px" onclick="qbAct(\'toggle\')">'+(c.on?"끄기":"켜기")+'</button><button class="btn g" style="padding:5px 10px;font-size:11px" onclick="qbAct(\'brake\')">브레이크 '+(c.brake?"해제":"ON")+'</button><button class="btn g" style="padding:5px 10px;font-size:11px" id="qbRunBtn" onclick="qbRunNow()">'+(QB_RUNNING?"실행 중…":"지금 실행")+'</button>':'')
+    +'</span></div>'
+    +'<div class="grid2" style="padding:12px 14px;gap:10px;grid-template-columns:repeat(4,minmax(0,1fr))">'
+    +qbStat("보유 슬롯",b.slots+" / "+R.slots)+qbStat("수익률",'<span style="color:'+(b.ret>=0?"var(--up)":"var(--dn)")+'">'+qbPct(b.ret)+'</span>')
+    +qbStat("시장 필터",'<span style="font-size:13px">'+esc(reg)+'</span>')+qbStat("오늘 실행",'<span style="font-size:13px">'+(r.phase?esc(phaseKo[r.phase]||r.phase):"아직 없음")+'</span>')
+    +'</div></div>';
+  // 보유
+  h+='<div class="card mt12"><div class="chead"><span class="t">보유 포지션</span><span class="s">진입가 기준 수익률 · 최고=진입 후 최대 상승폭</span></div>';
+  if(!QB.positions.length)h+='<div class="row"><span class="sub">보유 종목 없음</span></div>';
+  QB.positions.forEach(function(p){h+='<div class="row"><div class="grow"><b>'+esc(p.name)+'</b><div class="sub">'+esc(p.entry_date)+' 진입 · '+fmt(p.entry_price)+'원 · '+fmt(p.qty)+'주 · 점수 '+p.entry_score+'</div></div>'
+    +'<div style="text-align:right"><b style="color:'+(p.last_ret>=0?"var(--up)":"var(--dn)")+'">'+qbPct(p.last_ret)+'</b><div class="sub">'+p.days_held+'일 · 최고 '+qbPct(p.mfe)+'</div></div></div>';});
+  h+='</div>';
+  // 신호
+  h+='<div class="card mt12"><div class="chead"><span class="t">신호 ('+esc(QB.signals_date)+')</span><span class="s">점수순 · 결과 칸에 미체결 사유</span></div>';
+  if(!QB.signals.length)h+='<div class="row"><span class="sub">신호 없음</span></div>';
+  else{
+    h+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:560px"><tr class="sub" style="font-size:11px"><td style="padding:8px 14px">종목</td><td>점수</td><td>RSI</td><td>수급 5일</td><td>거래량</td><td>시총</td><td style="text-align:right;padding-right:14px">결과</td></tr>';
+    QB.signals.forEach(function(s){var buy=s.action==="buy";
+      h+='<tr style="border-top:1px solid var(--line);'+(buy?"":"color:var(--dim)")+'"><td style="padding:8px 14px"><b>'+esc(s.name)+'</b></td><td>'+s.score+'</td><td>'+Math.round(s.rsi_low)+'→'+Math.round(s.rsi_now)+'</td><td>'+qbEok(s.flow_sum)+' · '+s.streak+'일</td><td>'+s.vol_ratio.toFixed(1)+'배</td><td>'+qbCap(s.cap)+'</td>'
+        +'<td style="text-align:right;padding-right:14px">'+(buy?'<span style="color:#3DDC84">매수 '+esc(s.note)+'</span>':esc(s.note))+'</td></tr>';});
+    h+='</table></div>';
+  }
+  h+='</div>';
+  // 청산 이력
+  if(QB.closed.length){h+='<div class="card mt12"><div class="chead"><span class="t">청산 이력</span><span class="s">최근 20건</span></div>';
+    var kk={tp:"익절",sl:"손절",time:"시간청산"};
+    QB.closed.forEach(function(p){h+='<div class="row"><div class="grow"><b>'+esc(p.name)+'</b><div class="sub">'+esc(p.entry_date)+' → '+esc(p.exit_date)+' · '+p.days_held+'일 · 최고 '+qbPct(p.mfe)+'</div></div><b style="color:'+(p.exit_ret>=0?"var(--up)":"var(--dn)")+'">'+(kk[p.exit_kind]||p.exit_kind)+' '+qbPct(p.exit_ret)+'</b></div>';});
+    h+='</div>';}
+  // 로그 (관리자)
+  if(QB.owner){h+='<div class="card mt12"><div class="chead"><span class="t">실행 로그</span><span class="s">관리자만 표시</span></div><div style="padding:8px 14px;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;line-height:1.8;color:var(--dim)">';
+    if(!QB.logs.length)h+='아직 로그 없음';
+    QB.logs.forEach(function(l){var d=new Date(l.ts);var t=(d.getMonth()+1)+"/"+d.getDate()+" "+("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2);
+      var col=l.level==="error"?"var(--up)":l.level==="warn"?"var(--gold)":l.level==="trade"?"var(--tx)":"var(--dim)";
+      h+='<div style="color:'+col+'">'+t+' '+esc(l.msg)+'</div>';});
+    h+='</div></div>';}
+  el.innerHTML=h;
+}
+function qbStat(k,v){return '<div style="background:var(--panel2);border-radius:8px;padding:10px 12px"><div class="sub">'+k+'</div><div style="font-size:18px;font-weight:700;margin-top:2px">'+v+'</div></div>';}
+async function qbAct(a){try{await api("/api/quant",{method:"POST",body:{action:a}});await loadQuant();}catch(e){flash(e.message);}}
+async function qbRunNow(){
+  if(QB_RUNNING)return;QB_RUNNING=true;renderQuant();
+  try{
+    for(var i=0;i<40;i++){
+      var r=await api("/api/cron/quantbot");
+      if(r.phase==="done"||r.phase==="skip"){flash("실행 "+(r.phase==="done"?"완료":"생략")+(r.note?" · "+r.note:""));break;}
+      await loadQuant();
+    }
+  }catch(e){flash(e.message);}
+  QB_RUNNING=false;await loadQuant();
+}
 
 </script>
 </body>

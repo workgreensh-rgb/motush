@@ -104,6 +104,21 @@ export async function init() {
         ON CONFLICT (k) DO NOTHING`;
     }
   } catch (e) {}
+  // ── 퀀트봇A ──
+  await sql`CREATE TABLE IF NOT EXISTS bot_logs (
+    id SERIAL PRIMARY KEY, level TEXT NOT NULL DEFAULT 'info', msg TEXT NOT NULL, ts TIMESTAMPTZ DEFAULT now()
+  )`;
+  await sql`CREATE TABLE IF NOT EXISTS bot_signals (
+    id SERIAL PRIMARY KEY, run_date TEXT NOT NULL, sym TEXT NOT NULL, name TEXT,
+    score NUMERIC, rsi_low NUMERIC, rsi_now NUMERIC, flow_sum BIGINT, streak INTEGER, vol_ratio NUMERIC,
+    cap NUMERIC, tv BIGINT, price BIGINT, action TEXT NOT NULL, note TEXT, ts TIMESTAMPTZ DEFAULT now()
+  )`;
+  await sql`CREATE INDEX IF NOT EXISTS bot_signals_date_idx ON bot_signals (run_date, id DESC)`;
+  await sql`CREATE TABLE IF NOT EXISTS bot_positions (
+    id SERIAL PRIMARY KEY, sym TEXT NOT NULL, name TEXT, entry_date TEXT NOT NULL, entry_price BIGINT NOT NULL,
+    entry_score NUMERIC, qty INTEGER NOT NULL, days_held INTEGER DEFAULT 0, mfe NUMERIC DEFAULT 0, last_ret NUMERIC DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'open', exit_date TEXT, exit_price BIGINT, exit_kind TEXT, exit_ret NUMERIC
+  )`;
   ready = true;
 }
 
