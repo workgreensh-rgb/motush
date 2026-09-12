@@ -2,10 +2,14 @@
 import { init, sql, authUser } from "./_db.js";
 import { kvGet, kvSet, getQuotes, equityOf, START_CASH } from "./_kis.js";
 import { RULES, kstDate, botConfig, botLog } from "./_quant.js";
-import { isOwner } from "./cron/quantbot.js";
+import { isOwner, runBot } from "./_quantrun.js";
 
 export default async function handler(req, res) {
   try {
+    // 봇 실행 진입점: ?run=1 또는 Cron 시크릿 헤더
+    const secret = process.env.CRON_SECRET;
+    const isCronHdr = secret && String(req.headers["authorization"] || "") === "Bearer " + secret;
+    if ((req.query && req.query.run === "1") || isCronHdr) return runBot(req, res);
     await init();
     const user = await authUser(req);
     const owner = !!(user && isOwner(user));
