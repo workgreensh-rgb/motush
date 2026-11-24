@@ -186,7 +186,7 @@ border-radius:99px;padding:4px 11px;font-size:11px;font-weight:700;cursor:pointe
       <button class="tab" data-tab="flow" onclick="setTab('flow')">수급</button>
       <button class="tab" data-tab="port" onclick="setTab('port')">내 계좌</button>
       <button class="tab" data-tab="quant" onclick="setTab('quant')">자동매매</button>
-      <a class="tab" href="/real.html" style="text-decoration:none">실전 기록</a>
+      <button class="tab" data-tab="real" onclick="setTab('real')">실전 기록</button>
       <button class="tab" style="max-width:44px;font-size:15px" onclick="openSearch('trade')">🔍</button>
     </div>
   </div>
@@ -274,6 +274,7 @@ border-radius:99px;padding:4px 11px;font-size:11px;font-weight:700;cursor:pointe
   <div id="portTab" class="hidden"></div>
   <div id="quantTab" class="hidden"></div>
   <div id="flowTab" class="hidden"></div>
+  <div id="realTab" class="hidden"><iframe id="realFrame" title="실전 기록" scrolling="no" style="width:100%;border:0;display:block;min-height:600px;background:transparent"></iframe></div>
 </div>
 
 <div class="visitors num"><span class="dot"></span>동시접속 <b id="vAll">-</b> · 선수 <b id="vPl">-</b> · Total <b id="vTot">-</b></div>
@@ -605,16 +606,19 @@ async function enterApp(){
 function needLogin(){flash("로그인이 필요합니다");openLogin();}
 
 /* ───────── 탭 ───────── */
+function loadReal(){var f=document.getElementById('realFrame');if(!f.getAttribute('src'))f.src='/real.html?embed=1';}
+window.addEventListener('message',function(e){if(e.origin===location.origin&&e.data&&e.data.realH){document.getElementById('realFrame').style.height=e.data.realH+'px';}});
 function setTab(t){
   if(t==="port"&&!me){needLogin();return;}
   curTab=t;
   document.querySelectorAll(".tab").forEach(function(b){b.classList.toggle("on",b.dataset.tab===t);});
-  ["home","market","rank","party","port","quant","flow"].forEach(function(k){
+  ["home","market","rank","party","port","quant","flow","real"].forEach(function(k){
     document.getElementById(k+"Tab").classList.toggle("hidden",k!==t);
   });
   if(t==="rank")loadRank();
   if(t==="quant")loadQuant();
   if(t==="flow")loadFlow();
+  if(t==="real")loadReal();
   if(t==="home"){loadFeed();loadCoins();loadKw();}
   if(t==="market"){if(me){loadMarket();if(!PARTIES)loadParties();}}
   if(t==="party"){if(me)loadParties();}
