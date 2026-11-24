@@ -204,6 +204,18 @@ async function main() {
 
   $('foot').innerHTML = `기준: ${esc(d.basis)}<br>비중은 누적 투입원가 기준이며 외화 종목은 매수일 기준환율로 환산한 추정치입니다. 섹터 분류: ${esc(d.sectorSource || '-')}.<br>보유 종목 평가는 비버모투 시세(국내·미국)로 계산하며, 그 외 시장은 평가에서 빠집니다. 갱신 ${new Date(d.asof).toLocaleString('ko-KR')}`;
 }
+const EMBED = new URLSearchParams(location.search).has('embed');
+if (EMBED) {
+  document.querySelector('.hd').style.display = 'none';
+  document.body.style.paddingBottom = '20px';
+  document.querySelector('body > .wrap').style.padding = '0';
+  document.querySelector('body > .wrap').style.maxWidth = 'none';
+  document.body.style.minHeight = '0';
+  const send = () => parent.postMessage({ realH: Math.ceil(document.querySelector('body > .wrap').getBoundingClientRect().height) + 24 }, location.origin);
+  new ResizeObserver(send).observe(document.querySelector('body > .wrap'));
+  new ResizeObserver(send).observe(document.body);
+  window.addEventListener('load', send);
+}
 main();
 </script>
 </body>
